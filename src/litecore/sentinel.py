@@ -1,3 +1,10 @@
+"""Support the creation of unique singleton sentinel objects.
+
+"""
+__all__ = [
+    'create',
+]
+
 from typing import Optional
 
 _DEFAULT_NAME = '<Not Named>'
@@ -24,8 +31,8 @@ def create(*, name: Optional[str] = None):
     name (which in Python is a singleton object by definition).
 
     If no name argument is provided, the returned object will have a default
-    internal name and no __reduce__ method. There is no need to enforce that the
-    name to which the object is assigned matches the internal name, but the
+    internal name and no __reduce__ method. There is no need to enforce that
+    the name to which the object is assigned matches the internal name, but the
     resulting object will not be pickleable.
 
     The returned object always tests as False in boolean operations.
@@ -56,7 +63,7 @@ def create(*, name: Optional[str] = None):
             return f'<{self.__class__.__name__}({self._name})>'
 
         if name is not None:
-            # Make object pickleable as long as module-level name matches given name
+            # Make object pickleable; module-level name must match given name
             def __reduce__(self):
                 return self._name
 
