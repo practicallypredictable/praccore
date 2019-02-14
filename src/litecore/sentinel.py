@@ -56,7 +56,7 @@ def create(*, name: Optional[str] = None):
             return f'<{self.__class__.__name__}({self._name})>'
 
         if name is not None:
-            # Make object pickleable as long as module name matches given name
+            # Make object pickleable as long as module-level name matches given name
             def __reduce__(self):
                 return self._name
 
