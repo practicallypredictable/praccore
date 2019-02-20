@@ -20,6 +20,7 @@ from typing import (
     Callable,
     Iterable,
     Iterator,
+    List,
     Mapping,
     Optional,
     Tuple,
@@ -69,7 +70,7 @@ def keeping_keys(
         keys: Optional[Iterable[KT]] = None,
         where: Optional[Callable[[KT], bool]] = None,
 ) -> Iterator[Tuple[KT, VT]]:
-    """Return mapping keeping items with keys matching conditions.
+    """Yield items from a mapping with keys matching given conditions.
 
     Args:
         mapping: the mapping to be filtered
@@ -86,6 +87,8 @@ def keeping_keys(
 
     If both arguments are not None, a key either in keys or for which where is
     True will be kept.
+
+    If both arguments are None, no keys will be kept.
 
     >>> data = {'a': 1, 'A': 2, 'b': 3, 'e': 4, 'i': 5}
     >>> dict(keeping_keys(data))
@@ -112,7 +115,7 @@ def dropping_keys(
         keys: Optional[Iterable[KT]] = None,
         where: Optional[Callable[[KT], bool]] = None,
 ) -> Iterator[Tuple[KT, VT]]:
-    """Return mapping dropping items with keys matching conditions.
+    """Yield items from a mapping, excluding those with keys matching given conditions.
 
     Args:
         mapping: the mapping to be filtered
@@ -129,6 +132,8 @@ def dropping_keys(
 
     If both arguments are not None, a key either in keys or for which where is
     True will be dropped.
+
+    If both arguments are None, no keys will be dropped.
 
     >>> data = {'a': 1, 'A': 2, 'b': 3, 'e': 4, 'i': 5}
     >>> dict(dropping_keys(data))
@@ -155,7 +160,7 @@ def keeping_values(
         values: Optional[Iterable[VT]] = None,
         where: Optional[Callable[[VT], bool]] = None,
 ) -> Iterator[Tuple[KT, VT]]:
-    """Return mapping keeping items with values matching conditions.
+    """Yield items from a mapping with values meeting given conditions.
 
     Args:
         mapping: the mapping to be filtered
@@ -172,6 +177,8 @@ def keeping_values(
 
     If both arguments are not None, a value either in values or for which where is
     True will be kept.
+
+    If both arguments are None, no values will be kept.
 
     >>> data = {'a': 1, 'A': 2, 'b': 3, 'e': 4, 'i': 5}
     >>> dict(keeping_values(data))
@@ -198,7 +205,7 @@ def dropping_values(
         values: Optional[Iterable[VT]] = None,
         where: Optional[Callable[[VT], bool]] = None,
 ) -> Iterator[Tuple[KT, VT]]:
-    """Return mapping dropping items with values matching conditions.
+    """Yield items from a mapping, excluding those with values matching given conditions.
 
     Args:
         mapping: the mapping to be filtered
@@ -215,6 +222,8 @@ def dropping_values(
 
     If both arguments are not None, a value either in values or for which where is
     True will be dropped.
+
+    If both arguments are None, no values will be dropped.
 
     >>> data = {'a': 1, 'A': 2, 'b': 3, 'e': 4, 'i': 5}
     >>> dict(dropping_values(data))
@@ -235,29 +244,78 @@ def dropping_values(
             yield (k, v)
 
 
-def inverted(mapping: Mapping[KT, VT]) -> Iterator[Tuple[KT, VT]]:
+def inverted(mapping: Mapping[KT, VT]) -> Mapping[VT, KT]:
     """Returns a mapping inverting the values and keys of a given mapping.
 
     Args:
         mapping: the mapping to be inverted
     Returns:
-        inverted mapping, potentially sorted and with computed keys
+        inverted mapping (keys and values swapped)
 
     The keys of the returned mapping will be based upon the values of the
     original mapping. The values of the returned mapping will be the keys of
     the orignal mapping.
 
+    The type of the returned mapping will match that of the original mapping. It
+    is expected that the class of the original mapping has an initializer that
+    accepts an iterable of (key, value) tuples. The new items will be inserted
+    into the returned mapping in the same order as iteration over the keys
+    of the original mapping.
+
     If the original mapping is not 1-to-1 (i.e., there are duplicate values),
     the last observed item iterating through the original mapping's keys will
     be the only item retained in the returned mapping.
 
+    Warning: there is no test that the new keys (i.e., the values of the
+    original mapping) are actually hashable and therefore valid Python
+    dict keys.
+
     >>> original = {'a': 2, 'b': -1, 'c': 0, 'd': -3}
-    >>> dict(inverted(original))
+    >>> inverted(original)
     {2: 'a', -1: 'b', 0: 'c', -3: 'd'}
     >>> one_to_many = {'alice': 10, 'bob': 20, 'charlie': 10, 'david': 20}
-    >>> dict(inverted(one_to_many))
+    >>> inverted(one_to_many)
     {10: 'charlie', 20: 'david'}
 
     """
+    return type(mapping)((v, k) for k, v in mapping.items())
+
+
+def inverted_nonunique(mapping: Mapping[KT, VT]) -> Mapping[VT, List[VT]]:
+    """Returns a mapping inverting the values and keys of a given mapping.
+
+    Args:
+        mapping: the mapping to be inverted
+    Returns:
+        inverted mapping with values as list of keys from original mapping
+
+    The keys of the returned mapping will be based upon the values of the
+    original mapping. The values of the returned mapping will be a list of keys
+    from the original mapping corresponding to that value in the original mapping.
+
+    The type of the returned mapping will match that of the original mapping. It
+    is expected that the class of the original mapping has an initializer that
+    accepts an iterable of (key, value) tuples. The new items will be inserted
+    into the returned mapping in the same order as iteration over the keys
+    of the original mapping.
+
+    If the original mapping is not 1-to-1 (i.e., there are duplicate values),
+    the last observed item iterating through the original mapping's keys will
+    be the only item retained in the returned mapping.
+
+    Warning: there is no test that the new keys (i.e., the values of the
+    original mapping) are actually hashable and therefore valid Python
+    dict keys.
+
+    >>> original = {'a': 2, 'b': -1, 'c': 0, 'd': -3}
+    >>> inverted_nonunique(original)
+    {2: ['a'], -1: ['b'], 0: ['c'], -3: ['d']}
+    >>> one_to_many = {'alice': 10, 'bob': 20, 'charlie': 10, 'david': 20}
+    >>> inverted_nonunique(one_to_many)
+    {10: ['alice', 'charlie'], 20: ['bob', 'david']}
+
+    """
+    inverted = {}
     for k, v in mapping.items():
-        yield (v, k)
+        inverted.setdefault(v, []).append(k)
+    return type(mapping)((k, v) for k, v in inverted.items())
