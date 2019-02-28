@@ -6,14 +6,14 @@ argument. These tuples may then be used to instantiate whatever type of mapping
 the user desires.
 
 """
-__all__ = [
+__all__ = (
     'is_one_to_one',
     'keeping_keys',
     'dropping_keys',
     'keeping_values',
     'dropping_values',
     'inverted',
-]
+)
 
 from typing import (
     Any,

@@ -1,9 +1,10 @@
 """Support the creation of unique singleton sentinel objects.
 
 """
-__all__ = [
+__all__ = (
     'create',
-]
+    'MISSING',
+)
 
 from typing import Optional
 
@@ -71,3 +72,6 @@ def create(*, name: Optional[str] = None):
             return False
 
     return Sentinel()
+
+
+MISSING = create(name='MISSING')

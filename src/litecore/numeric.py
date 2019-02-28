@@ -1,3 +1,10 @@
+"""Miscellaneous convenience functions for numerical computations.
+
+"""
+__all__ = [
+    'as_ratio',
+]
+
 from fractions import Fraction
 import numbers
 
@@ -7,7 +14,13 @@ from typing import (
 
 
 def as_ratio(x: numbers.Real) -> Tuple[int, int]:
-    """Return integer numerator and denominator for a real number.
+    """Return rational approximation of a real number.
+
+    Args:
+        x: a real number
+    Returns:
+        tuple of integer numerator and denominator of closest rational
+        approximation to the argument
 
     The fraction defined by the returned numerator and denominator will be
     in lowest terms.
