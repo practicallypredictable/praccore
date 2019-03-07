@@ -3,10 +3,16 @@
 """
 __all__ = (
     'create',
-    'MISSING',
+    'NO_VALUE',
 )
 
-from typing import Optional
+import logging
+
+from typing import (
+    Optional,
+)
+
+log = logging.getLogger(__name__)
 
 _DEFAULT_NAME = '<Not Named>'
 
@@ -14,19 +20,20 @@ _DEFAULT_NAME = '<Not Named>'
 def create(*, name: Optional[str] = None):
     """Create and return a new instance of a new class to serve as a sentinel.
 
-    Args:
-        name (optional): the name of the sentinel instance
+    Keyword Arguments:
+        name: (optional) name of the sentinel instance
+
     Returns:
         instance of newly-created sentinel class
 
     By design, each call will return an instance of a distinct, newly-created
     class (even calls having the same name argument). Notice that the __init__
-    method for the created class takes no arguments. Therefore, it is impossible
-    to create additional instances of the same class.
+    method for the created class takes no arguments. Therefore, it is not
+    possible to create additional instances of the same class.
 
     If provided, the name argument should match the module-level name to which
-    the result is being assigned. This will assure the object is pickleable. The
-    returned instance will have a __reduce__ method to support pickling.
+    the result is being assigned. This will assure the object is pickleable.
+    The returned instance will have a __reduce__ method to support pickling.
 
     In this usage, make sure to assign the returned object to a module-level
     name (which in Python is a singleton object by definition).
@@ -40,11 +47,11 @@ def create(*, name: Optional[str] = None):
 
     >>> MISSING = create(name='MISSING')
     >>> MISSING
-    <Sentinel(MISSING)>
+    <Sentinel: MISSING>
     >>> bool(MISSING)
     False
     >>> create()
-    <Sentinel(<Not Named>)>
+    <Sentinel: <Not Named>>
     >>> create(name='SAME') == create(name='SAME')
     False
     >>> type(create(name='SAME')) == type(create(name='SAME'))
@@ -61,10 +68,11 @@ def create(*, name: Optional[str] = None):
                 self._named = True
 
         def __repr__(self):
-            return f'<{self.__class__.__name__}({self._name})>'
+            return f'<{self.__class__.__name__}: {self._name}>'
 
         if name is not None:
             # Make object pickleable; module-level name must match given name
+            # or pickling won't work properly
             def __reduce__(self):
                 return self._name
 
@@ -74,4 +82,8 @@ def create(*, name: Optional[str] = None):
     return Sentinel()
 
 
-MISSING = create(name='MISSING')
+NO_VALUE = create(name='NO_VALUE')
+"""Generic re-usable sentinel value for missing function arguments.
+
+Useful as an alternative to None, when None is a meaningful value.
+"""
