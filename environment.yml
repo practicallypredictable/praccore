@@ -1,0 +1,13 @@
+name: litecore
+channels:
+- defaults
+- conda-forge
+dependencies:
+- python=3.7
+- pip
+- setuptools
+- twine
+- pytest
+- black
+- flake8
+- mypy
