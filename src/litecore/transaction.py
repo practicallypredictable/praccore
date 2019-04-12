@@ -20,24 +20,10 @@ class RollbackError(TransactionError):
     pass
 
 
-class UndoStep:
-    def __init__(self, name: str, func: Callable, *args, **kwargs):
-        self.name = name
-        self.func = func
-        self.args = args
-        self.kwargs = kwargs
-
-    def __repr__(self) -> str:
-        r = f'<{type(self)}({self.name!r}, {self.func!r}'
-        s = litecore.utils.generic_repr(self.args, self.kwargs)
-        if s:
-            r += f', {s})>'
-        else:
-            r += f')>'
-        return r
-
-    def __call__(self):
-        self.func(*self.args, **self.kwargs)
+def undoer(func: Callable, *args, **kwargs):
+    def inner():
+        func(*args, **kwargs)
+    return inner
 
 
 class TransactionManager:

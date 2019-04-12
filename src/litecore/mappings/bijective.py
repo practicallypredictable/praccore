@@ -51,8 +51,7 @@ class BijectiveMapping(litecore.mappings.abcBaseMapping):
 
     def _delete_from_mapping(self, key, value):
         super()._del_item(key)
-        return litecore.transaction.UndoStep(
-            f'{__name__}._delete_from_mapping',
+        return litecore.transaction.undoer(
             super()._set_item,
             key,
             value,
@@ -60,8 +59,7 @@ class BijectiveMapping(litecore.mappings.abcBaseMapping):
 
     def _delete_from_inverse(self, value, key):
         del self._inverse_mapping[value]
-        return litecore.transaction.UndoStep(
-            f'{__name__}._delete_from_inverse',
+        return litecore.transaction.undoer(
             self._inverse_mapping.__setitem__,
             value,
             key,
@@ -69,34 +67,28 @@ class BijectiveMapping(litecore.mappings.abcBaseMapping):
 
     def _overwrite_mapping(self, key, value=_NOTHING):
         super()._set_item(key, value)
-        name = f'{__name__}._overwrite_mapping'
         if value is not _NOTHING:
-            return litecore.transaction.UndoStep(
-                name,
+            return litecore.transaction.undoer(
                 super()._set_item,
                 key,
                 value,
             )
         else:
-            return litecore.transaction.UndoStep(
-                name,
+            return litecore.transaction.undoer(
                 super()._del_item,
                 key,
             )
 
     def _overwrite_inverse(self, value, key=_NOTHING):
         self._inverse_mapping[value] = key
-        name = f'{__name__}._overwrite_inverse'
         if key is not _NOTHING:
-            return litecore.transaction.UndoStep(
-                name,
+            return litecore.transaction.undoer(
                 self._inverse_mapping.__setitem__,
                 value,
                 key,
             )
         else:
-            return litecore.transaction.UndoStep(
-                name,
+            return litecore.transaction.undoer(
                 self._inverse_mapping.__delitem__,
                 value,
             )
