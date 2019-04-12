@@ -10,7 +10,7 @@ from typing import (
 )
 
 import litecore.mappings.exceptions
-from litecore.mappings.abc import implements as _implements
+import litecore.mappings.abc
 import litecore.mappings.mixins
 
 log = logging.getLogger(__name__)
@@ -119,7 +119,7 @@ class OrderedCounter(EnhancedCounter, collections.OrderedDict):
 # TODO: checking pickling/json/copy/deepcopy for all
 
 
-@_implements(dict)
+@litecore.mappings.abc.implements(dict)
 class StringKeyOnlyDict(
         litecore.mappings.mixins.StringKeyOnlyMixin,
         litecore.mappings.abc.BaseMutableMapping,
@@ -127,7 +127,7 @@ class StringKeyOnlyDict(
     pass
 
 
-@_implements(collections.OrderedDict)
+@litecore.mappings.abc.implements(collections.OrderedDict)
 class StringKeyOnlyOrderedDict(
         litecore.mappings.mixins.StringKeyOnlyMixin,
         litecore.mappings.abc.BaseMutableMapping,
@@ -135,7 +135,7 @@ class StringKeyOnlyOrderedDict(
     pass
 
 
-@_implements(LastUpdatedOrderedDict)
+@litecore.mappings.abc.implements(LastUpdatedOrderedDict)
 class StringKeyOnlyLastUpdatedOrderedDict(
         litecore.mappings.mixins.StringKeyOnlyMixin,
         litecore.mappings.abc.BaseMutableMapping,
@@ -143,7 +143,7 @@ class StringKeyOnlyLastUpdatedOrderedDict(
     pass
 
 
-@_implements(collections.defaultdict)
+@litecore.mappings.abc.implements(collections.defaultdict)
 class StringKeyOnlyDefaultDict(
         litecore.mappings.mixins.StringKeyOnlyMixin,
         litecore.mappings.abc.BaseMutableMapping,
@@ -151,7 +151,7 @@ class StringKeyOnlyDefaultDict(
     pass
 
 
-@_implements(EnhancedDefaultDict)
+@litecore.mappings.abc.implements(EnhancedDefaultDict)
 class StringKeyOnlyEnhancedDefaultDict(
         litecore.mappings.mixins.StringKeyOnlyMixin,
         litecore.mappings.abc.BaseMutableMapping,
@@ -159,7 +159,7 @@ class StringKeyOnlyEnhancedDefaultDict(
     pass
 
 
-@_implements(collections.Counter)
+@litecore.mappings.abc.implements(collections.Counter)
 class StringKeyOnlyCounter(
         litecore.mappings.mixins.StringKeyOnlyMixin,
         litecore.mappings.abc.BaseMutableMapping,
@@ -167,7 +167,7 @@ class StringKeyOnlyCounter(
     pass
 
 
-@_implements(EnhancedCounter)
+@litecore.mappings.abc.implements(EnhancedCounter)
 class StringKeyOnlyEnhancedCounter(
         litecore.mappings.mixins.StringKeyOnlyMixin,
         litecore.mappings.abc.BaseMutableMapping,
@@ -175,7 +175,7 @@ class StringKeyOnlyEnhancedCounter(
     pass
 
 
-@_implements(OrderedCounter)
+@litecore.mappings.abc.implements(OrderedCounter)
 class StringKeyOnlyOrderedCounter(
         litecore.mappings.mixins.StringKeyOnlyMixin,
         litecore.mappings.abc.BaseMutableMapping,
