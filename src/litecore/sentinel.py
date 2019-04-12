@@ -1,8 +1,11 @@
 """Support the creation of unique singleton sentinel objects.
 
 """
+import logging
 
 from typing import Optional
+
+log = logging.getLogger(__name__)
 
 _DEFAULT_NAME = '<Not Named>'
 
@@ -69,6 +72,3 @@ def create(*, name: Optional[str] = None):
             return False
 
     return Sentinel()
-
-
-NO_VALUE = create(name='NO_VALUE')

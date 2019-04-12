@@ -1,16 +1,15 @@
-__all__ = (
-    'is_iterable',
-    'is_iterator',
-)
-
 import collections
 import inspect
+import logging
 
 from typing import (
     Any,
-    Tuple,
+    Optional,
+    Sequence,
     Type,
 )
+
+log = logging.getLogger(__name__)
 
 
 def is_class(obj: Any) -> bool:
@@ -20,22 +19,50 @@ def is_class(obj: Any) -> bool:
 def is_iterable(
         obj: Any,
         *,
-        only_registered: bool = False,
-        excluded: Tuple[Type] = (str, bytes),
+        ignore_types: Optional[Sequence[Type]] = None,
 ) -> bool:
-    if excluded is not None and isinstance(obj, excluded):
+    """Check whether an object is iterable.
+
+    Checks whether the object can be passed to the built-in iter() function.
+    Certain types can be forced to return False using the ignore_types keyword
+    argument. This is useful for excluding types such as str, bytes and
+    bytearray, which are natively iterable but which are often treated as
+    non-iterable. (See, e.g., the flatten_recursive() function in the
+    litecore.sequences sub-package).
+
+    Arguments:
+        obj: object to be checked
+
+    Keyword Arguments:
+        ignore_types: sequence of types for which checking is to return False
+            (optional; defaults to None)
+
+    Returns:
+        True if the object can be passed to iter(), otherwise False.
+
+    Examples:
+
+    >>> is_iterable('abc')
+    True
+    >>> is_iterable('abc', ignore_types=(str, bytes, bytearray))
+    False
+    >>> is_iterable(range(10))
+    True
+    >>> is_iterable(2)
+    False
+
+    """
+    if ignore_types is not None and isinstance(obj, ignore_types):
         return False
     elif isinstance(obj, collections.abc.Iterable):
         return True
-    elif not only_registered:
+    else:
         try:
             iter(obj)
+            return True
         except TypeError:
             return False
-        else:
-            return True
-    else:
-        return False
+    return False
 
 
 def is_iterator(

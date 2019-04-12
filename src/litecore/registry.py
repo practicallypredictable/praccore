@@ -1,10 +1,6 @@
 """Mixin classes and decorators for creating auto-registered classes.
 
 """
-__all__ = (
-    'ClassRegistry',
-)
-
 import collections
 import logging
 import operator
@@ -27,6 +23,7 @@ class ClassRegistry(collections.abc.Mapping):
     """Mapping of hashable keys to class objects.
 
     """
+
     def __init__(
             self,
             *,
@@ -119,7 +116,7 @@ class ClassRegistry(collections.abc.Mapping):
             _cls: Type = None,
             *,
             key: Optional[Hashable] = None,
-    ) -> :
+    ):
         """Class decorator to add a class object to the registry.
 
         """

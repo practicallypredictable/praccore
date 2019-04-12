@@ -1,11 +1,9 @@
 """Miscellaneous convenience functions for numerical computations.
 
 """
-__all__ = [
-    'as_ratio',
-]
+# This module should not import from any other litecore module besides utils
 
-from fractions import Fraction
+import fraction
 import numbers
 
 from typing import (
@@ -16,14 +14,17 @@ from typing import (
 def as_ratio(x: numbers.Real) -> Tuple[int, int]:
     """Return rational approximation of a real number.
 
-    Args:
-        x: a real number
-    Returns:
-        tuple of integer numerator and denominator of closest rational
-        approximation to the argument
-
     The fraction defined by the returned numerator and denominator will be
     in lowest terms.
+
+    Arguments:
+        x: a real number
+
+    Returns:
+        Tuple of integer numerator and denominator of closest rational
+        approximation to the argument.
+
+    Examples:
 
     >>> import math
     >>> as_ratio(math.pi)
@@ -58,7 +59,7 @@ def as_ratio(x: numbers.Real) -> Tuple[int, int]:
         else:
             msg = f'Invalid numeric value {x!r}; implied exponent {exponent}'
             raise ValueError(msg)
-        padding = '0' * (abs(exponent)-1)
+        padding = '0' * (abs(exponent) - 1)
         if exponent > 0:
             s = f'{sign}{digits}{padding}.0'
         else:
@@ -66,5 +67,5 @@ def as_ratio(x: numbers.Real) -> Tuple[int, int]:
     s = s.split('.')
     n = int(''.join(s))
     d = 10 ** len(s[1])
-    f = Fraction(n, d)
+    f = fraction.Fraction(n, d)
     return f.numerator, f.denominator
