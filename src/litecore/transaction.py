@@ -23,6 +23,9 @@ class RollbackError(TransactionError):
 def undoer(func: Callable, *args, **kwargs):
     def inner():
         func(*args, **kwargs)
+    inner.name = f'{func.__name__}'
+    inner.args = args
+    inner.kwargs = kwargs
     return inner
 
 
@@ -32,6 +35,16 @@ class TransactionManager:
         self._reraise = bool(reraise)
         self._prepared = False
         self._stack = []
+
+    def __repr__(self) -> str:
+        funcs = ', '.join(
+            f'{f.name}({litecore.utils.generic_repr(f.args, f.kwargs)})'
+            for f in reversed(self._stack)
+        )
+        return (
+            f'<{type(self)}(name={self._name}, reraise={self._reraise}) '
+            f'with {len(self._stack)} undo transactions: {funcs}'
+        )
 
     @property
     def prepared(self) -> bool:
@@ -62,7 +75,7 @@ class TransactionManager:
             msg = f'Transaction not yet prepared'
             raise TransactionError(msg)
 
-    def push_undo(self, undo: UndoStep):
+    def push_undo(self, undo: Callable):
         self._validate()
         self._stack.append(undo)
 

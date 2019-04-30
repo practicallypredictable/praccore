@@ -1,15 +1,34 @@
 import functools
 import logging
+import time
 
 from typing import (
+    Any,
     Callable,
     Optional,
     Union,
 )
 
-from litecore import utils
-
 log = logging.getLogger(__name__)
+
+
+def timed(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        start_time = time.perf_counter()
+        value = func(*args, **kwargs)
+        wrapper.run_time = time.perf_counter() - start_time
+        return value
+    return wrapper
+
+
+def counted(func: Callable) -> Any:
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        wrapper.times_called += 1
+        return func(*args, **kwargs)
+    wrapper.times_called = 0
+    return wrapper
 
 
 def should_log(level) -> bool:
@@ -17,8 +36,7 @@ def should_log(level) -> bool:
 
 
 def _class_logger_name(class_obj) -> str:
-    class_name = utils.get_qualname(class_obj)
-    return f'{class_obj.__module__}.{class_name}'
+    return f'{class_obj.__module__}.{class_obj.__qualname__}'
 
 
 def class_logger(instance):
@@ -270,31 +288,19 @@ def make_logged_mixin_factory(
                 def __getitem__(self, locator):
                     if should_log(level):
                         log_get(self.logger, level, self, locator)
-                    try:
-                        return super().__getitem__(locator)
-                    except AttributeError as err:
-                        msg = f'Object {self!r} does not have __getitem__()'
-                        raise AttributeError(msg) from err
+                    return super().__getitem__(locator)
 
             if log_set is not None:
                 def __setitem__(self, locator, value):
                     if should_log(level):
                         log_set(self.logger, level, self, locator, value)
-                    try:
-                        return super().__setitem__(locator, value)
-                    except AttributeError as err:
-                        msg = f'Object {self!r} does not have __setitem__()'
-                        raise AttributeError(msg) from err
+                    super().__setitem__(locator, value)
 
             if log_del is not None:
                 def __delitem__(self, locator, value):
                     if should_log(level):
                         log_del(self.logger, level, self, locator)
-                    try:
-                        return super().__delitem__(locator)
-                    except AttributeError as err:
-                        msg = f'Object {self!r} does not have __delitem__()'
-                        raise AttributeError(msg) from err
+                    super().__delitem__(locator)
 
         _LoggedItemAccessMixin.__name__ = name
         if doc is not None:
@@ -331,21 +337,3 @@ class LoggingContext:
             self.logger.removeHandler(self.handler)
             if self.close_handler:
                 self.handler.close()
-
-
-class CallCounter:
-    def __init__(self, *, func, hook=None) -> None:
-        self._called = 0
-        self._func = func
-        self._hook = hook
-        functools.update_wrapper(self, func, updated=())
-
-    @property
-    def called(self) -> int:
-        return self._called
-
-    def __call__(self, *args, **kwargs):
-        self._called += 1
-        if self._hook:
-            self._hook(self, *args, **kwargs)
-        return self._func(*args, **kwargs)

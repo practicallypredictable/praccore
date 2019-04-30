@@ -27,12 +27,28 @@ integral arguments where an int is expected, will generally be detected
 by the underlying built-in or itertools function.
 
 """
-import logging
-
+from .slice import (  # noqa: F401
+    adjust_slice_endpoint,
+    adjust_slice_args,
+    slice_indices,
+    iter_slice,
+)
 
 from .classes import (  # noqa: F401
     SequenceProxyType,
     CachedIterator,
+)
+
+from .linkedlist import (  # noqa: F401
+    Node,
+    SingleLinkNode,
+    SinglyLinkedList,
+    DoubleLinkNode,
+    DoublyLinkedList,
+)
+
+from .orderedset import (  # noqa: F401
+    OrderedSet,
 )
 
 from .mixins import (  # noqa: F401
@@ -114,5 +130,3 @@ from .sorting import (  # noqa: F401
     prioritize,
     prioritize_where,
 )
-
-log = logging.getLogger(__name__)

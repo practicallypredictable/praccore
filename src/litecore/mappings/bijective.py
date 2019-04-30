@@ -1,3 +1,4 @@
+import collections
 import dataclasses
 import logging
 import types
@@ -21,15 +22,17 @@ _NOTHING = litecore.sentinel.create(name='_NOTHING')
 class _PriorBijectiveItem:
     key: Hashable
     value: Any
-    has_key: bool = dataclasses.field(init=False)
-    has_value: bool = dataclasses.field(init=False)
 
-    def __post_init__(self):
-        self.has_key = self.key is not _NOTHING
-        self.has_value = self.value is not _NOTHING
+    @property
+    def has_key(self) -> bool:
+        return self.key is not _NOTHING
+
+    @property
+    def has_value(self) -> bool:
+        return self.value is not _NOTHING
 
 
-class BijectiveMapping(litecore.mappings.abcBaseMapping):
+class BijectiveMapping(litecore.mappings.abc.BaseMapping):
     __slots__ = ('_inverse_mapping')
 
     def __init__(self, iterable_or_mapping=(), **kwargs):
@@ -65,13 +68,13 @@ class BijectiveMapping(litecore.mappings.abcBaseMapping):
             key,
         )
 
-    def _overwrite_mapping(self, key, value=_NOTHING):
+    def _overwrite_mapping(self, key, value, prior_value=_NOTHING):
         super()._set_item(key, value)
-        if value is not _NOTHING:
+        if prior_value is not _NOTHING:
             return litecore.transaction.undoer(
                 super()._set_item,
                 key,
-                value,
+                prior_value,
             )
         else:
             return litecore.transaction.undoer(
@@ -79,13 +82,13 @@ class BijectiveMapping(litecore.mappings.abcBaseMapping):
                 key,
             )
 
-    def _overwrite_inverse(self, value, key=_NOTHING):
+    def _overwrite_inverse(self, value, key, prior_key=_NOTHING):
         self._inverse_mapping[value] = key
-        if key is not _NOTHING:
+        if prior_key is not _NOTHING:
             return litecore.transaction.undoer(
                 self._inverse_mapping.__setitem__,
                 value,
-                key,
+                prior_key,
             )
         else:
             return litecore.transaction.undoer(
@@ -114,9 +117,9 @@ class BijectiveMapping(litecore.mappings.abcBaseMapping):
                 transaction.push_undo(
                     self._delete_from_mapping(prior_item.key, value))
             transaction.push_undo(
-                self._overwrite_mapping(key, prior_item.value))
+                self._overwrite_mapping(key, value, prior_item.value))
             transaction.push_undo(
-                self._overwrite_mapping(value, prior_item.key))
+                self._overwrite_inverse(value, key, prior_item.key))
             transaction.commit()
 
     def _del_item(self, key):
@@ -142,3 +145,21 @@ class BijectiveMapping(litecore.mappings.abcBaseMapping):
             raise KeyError(key)
         else:
             return value
+
+
+class BijectiveMutableMapping(
+        BijectiveMapping,
+        collections.abc.MutableMapping,
+):
+    __slots__ = ()
+
+    def __setitem__(self, key: Hashable, value: Any) -> None:
+        super()._set_item(key, value)
+
+    def __delitem__(self, key: Hashable) -> None:
+        super()._del_item(key)
+
+
+@litecore.mappings.abc.implements(dict)
+class BijectiveDict(BijectiveMutableMapping):
+    pass

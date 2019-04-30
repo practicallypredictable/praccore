@@ -11,8 +11,10 @@ import itertools
 import logging
 
 from typing import (
+    Any,
     Callable,
     Collection,
+    Hashable,
     Iterator,
     Mapping,
     MutableSequence,
@@ -23,7 +25,7 @@ from typing import (
 )
 
 from litecore._types import KT, VT, HVT
-
+import litecore.check
 
 log = logging.getLogger(__name__)
 
@@ -83,18 +85,18 @@ def grouped(
 
 
 def inverted(
-        mapping: Mapping[Tuple[KT, VT]]) -> Iterator[Tuple[VT, KT]]:
+        mapping: Mapping[KT, VT]) -> Iterator[Tuple[VT, KT]]:
     return ((v, k) for k, v in mapping.items())
 
 
 def inverted_last_seen(
-        mapping: Mapping[Tuple[KT, HVT]]) -> Iterator[Tuple[HVT, KT]]:
+        mapping: Mapping[KT, HVT]) -> Iterator[Tuple[HVT, KT]]:
     seen = dict(inverted(mapping))
     return iter(seen.items())
 
 
 def inverted_first_seen(
-        mapping: Mapping[Tuple[KT, HVT]]) -> Iterator[Tuple[HVT, KT]]:
+        mapping: Mapping[KT, HVT]) -> Iterator[Tuple[HVT, KT]]:
     seen = set()
     saw = seen.add
     for v, k in inverted(mapping):
@@ -104,7 +106,7 @@ def inverted_first_seen(
 
 
 def inverted_multi_values(
-        mapping: Mapping[Tuple[KT, HVT]],
+        mapping: Mapping[KT, HVT],
         *,
         item_factory: Type[Collection],
         record_item: Callable[[Collection, KT], None],
@@ -116,7 +118,7 @@ def inverted_multi_values(
 
 
 def inverted_ordered_multi_values(
-        mapping: Mapping[Tuple[KT, HVT]]) -> Iterator[Tuple[HVT, KT]]:
+        mapping: Mapping[KT, HVT]) -> Iterator[Tuple[HVT, KT]]:
     def append_item(key_list: MutableSequence[KT], item: KT) -> None:
         key_list.append(item)
     return inverted_multi_values(
@@ -127,7 +129,7 @@ def inverted_ordered_multi_values(
 
 
 def inverted_counted_multi_values(
-        mapping: Mapping[Tuple[KT, HVT]]) -> Iterator[Tuple[HVT, KT]]:
+        mapping: Mapping[KT, HVT]) -> Iterator[Tuple[HVT, KT]]:
     def count_item(key_counter: collections.Counter, item: KT):
         key_counter.update(item)
     return inverted_multi_values(
@@ -138,7 +140,7 @@ def inverted_counted_multi_values(
 
 
 def inverted_unique_multi_values(
-        mapping: Mapping[Tuple[KT, HVT]]) -> Iterator[Tuple[HVT, KT]]:
+        mapping: Mapping[KT, HVT]) -> Iterator[Tuple[HVT, KT]]:
     def add_item(key_set: MutableSet[KT], item: KT):
         key_set.add(item)
     return inverted_multi_values(
@@ -193,3 +195,100 @@ def left_join(first, *others, default=None):
 def left_join2(left, right, *, default=None):
     for k in left.keys():
         yield (k, (left[k], right.get(k, default)))
+
+
+def _tupleize_keys(k1, k2) -> Tuple[Hashable, ...]:
+    if k1 is None:
+        return (k2,)
+    else:
+        return k1 + (k2,)
+
+
+def flatten(
+        obj: Any,
+        *,
+        key_reducer: Callable[[Hashable], Hashable] = _tupleize_keys,
+        _key=None,
+        _memo=None,
+) -> Iterator[Tuple[Tuple[Hashable, ...], Any]]:
+    if _memo is None:
+        _memo = set()
+    if litecore.check.is_mapping(obj):
+        iterator = obj.items()
+    elif litecore.check.is_iterable_but_do_not_recurse(obj):
+        iterator = enumerate(obj)
+    else:
+        iterator = None
+    if iterator:
+        if id(obj) not in _memo:
+            _memo.add(id(obj))
+            for k, value in iterator:
+                yield from flatten(
+                    value,
+                    key_reducer=key_reducer,
+                    _key=key_reducer(_key, k),
+                    _memo=_memo,
+                )
+            _memo.remove(id(obj))
+        # TODO: warn recursive object?
+    else:
+        yield _key, obj
+
+
+def modify(
+        obj: Any,
+        *,
+        modify_key: Callable = lambda x: x,
+        modify_value: Callable = lambda x, original_key: x,
+        mapping_factory: Callable = None,
+        iterable_factory: Callable = None,
+        _memo=None,
+):
+    if _memo is None:
+        _memo = set()
+    if litecore.check.is_mapping(obj):
+        _memo.add(id(obj))
+        factory = type(obj) if mapping_factory is None else mapping_factory
+        new_obj = factory()
+        for key, value in obj.items():
+            new_obj[modify_key(key)] = modify_value(
+                modify(
+                    value,
+                    modify_key=modify_key,
+                    modify_value=modify_value,
+                    mapping_factory=mapping_factory,
+                    iterable_factory=iterable_factory,
+                    _memo=_memo,
+                ),
+                original_key=key,
+            )
+        _memo.remove(id(obj))
+    elif litecore.check.is_iterable_but_do_not_recurse(obj):
+        _memo.add(id(obj))
+        factory = type(obj) if iterable_factory is None else iterable_factory
+        new_obj = factory(
+            modify(
+                value,
+                modify_key=modify_key,
+                modify_value=modify_value,
+                mapping_factory=mapping_factory,
+                iterable_factory=iterable_factory,
+                _memo=_memo,
+            ) for value in obj
+        )
+        _memo.remove(id(obj))
+    else:
+        return obj
+    return new_obj
+
+
+def deep_merge(original, new):
+    if (not isinstance(original, collections.abc.Mapping) or not
+            isinstance(new, collections.abc.Mapping)):
+        return new
+    for key in new:
+        if key in original:
+            original[key] = deep_merge(original[key], new[key])
+        else:
+            original[key] = new[key]
+    return original

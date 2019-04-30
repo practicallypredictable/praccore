@@ -1,17 +1,16 @@
 import collections
 import copy
+import functools
 import logging
 
 from typing import (
+    Callable,
     Hashable,
-    List,
     Optional,
-    Tuple,
 )
 
-import litecore.mappings.exceptions
-import litecore.mappings.abc
-import litecore.mappings.mixins
+import litecore.validate
+from litecore.mappings.types import MutableMappingFactory
 
 log = logging.getLogger(__name__)
 
@@ -25,79 +24,51 @@ class LastUpdatedOrderedDict(collections.OrderedDict):
         https://docs.python.org/3/library/collections.html#collections.OrderedDict
 
     """
-    __slots__ = ()
 
     def __setitem__(self, key, value):
         super().__setitem__(key, value)
         super().move_to_end(key)
 
 
-class EnhancedDefaultDict(dict):
-    def __init__(self, missing=None, *args, **kwargs):
+class OrderedDefaultDict(collections.OrderedDict):
+    def __init__(
+            self,
+            default_factory: Optional[Callable] = None,
+            *args,
+            **kwargs,
+    ):
+        if default_factory is not None and not callable(default_factory):
+            msg = f'First argument (default_factory) must be callable or None'
+            raise TypeError(msg)
         super().__init__(*args, **kwargs)
-        if missing is not None:
-            if callable(missing):
-                self._missing = missing
-            else:
-                self._missing = lambda instance, key: missing
-        else:
-            self._missing = missing
+        self.default_factory = default_factory
 
-    def __repr__(self) -> str:
-        return f'{type(self).__name__}({self._missing!r}, {dict(self)!r})'
+    def __repr__(self):
+        items = list(self.items())
+        return f'{type(self).__name__}({self.default_factory!r}, {items!r})'
 
-    def __missing__(self, key):
-        if self._missing is None:
+    def __missing__(self, key: Hashable):
+        if self.default_factory is None:
             raise KeyError(key)
-        self[key] = value = self._missing(self, key)
+        self[key] = value = self.default_factory()
         return value
 
     def copy(self):
         return self.__copy__()
 
     def __copy__(self):
-        return type(self)(self._missing, dict(self))
+        return type(self)(self.default_factory, self)
 
     def __deepcopy__(self, memo):
-        return type(self)(self._missing, copy.deepcopy(dict(self)))
+        items = tuple(self.items())
+        return type(self)(self.default_factory, copy.deepcopy(items))
 
     def __reduce__(self):
-        return type(self), (self._missing, dict(self))
+        args = (self.default_factory,) if self.default_factory else tuple()
+        return type(self), args, None, None, iter(self.items())
 
 
-class EnhancedCounter(collections.Counter):
-    def total(self):
-        """
-
-        Examples:
-
-        >>> EnhancedCounter('abracadabra').total() == len('abracadabra')
-        True
-
-        """
-        return sum(self.values())
-
-    def least_common(
-            self,
-            n: Optional[int] = None,
-    ) -> List[Tuple[Hashable, int]]:
-        """
-
-        Examples:
-
-        >>> EnhancedCounter('abracadabra').least_common(3)
-        [('d', 1), ('c', 1), ('r', 2)]
-        >>> EnhancedCounter('abracadabra').least_common()
-        [('d', 1), ('c', 1), ('r', 2), ('b', 2), ('a', 5)]
-
-        """
-        if n is None:
-            return list(reversed(self.most_common()))
-        else:
-            return self.most_common()[:-(n + 1):-1]
-
-
-class OrderedCounter(EnhancedCounter, collections.OrderedDict):
+class OrderedCounter(collections.Counter, collections.OrderedDict):
     """
 
     Examples:
@@ -116,68 +87,32 @@ class OrderedCounter(EnhancedCounter, collections.OrderedDict):
     def __reduce__(self):
         return type(self), (collections.OrderedDict(self),)
 
-# TODO: checking pickling/json/copy/deepcopy for all
+
+class _RecursiveDefaultDict:
+    def __init__(self, factory):
+        self._factory = factory
+
+    def __call__(self):
+        return self._factory(self)
 
 
-@litecore.mappings.abc.implements(dict)
-class StringKeyOnlyDict(
-        litecore.mappings.mixins.StringKeyOnlyMixin,
-        litecore.mappings.abc.BaseMutableMapping,
+def recursive_defaultdict(
+        defaultdict_factory: MutableMappingFactory = collections.defaultdict,
 ):
-    pass
+    return defaultdict_factory(_RecursiveDefaultDict(defaultdict_factory))
 
 
-@litecore.mappings.abc.implements(collections.OrderedDict)
-class StringKeyOnlyOrderedDict(
-        litecore.mappings.mixins.StringKeyOnlyMixin,
-        litecore.mappings.abc.BaseMutableMapping,
+def nested_defaultdict(
+        default_factory,
+        *,
+        defaultdict_factory: MutableMappingFactory = collections.defaultdict,
+        depth: int = 1,
 ):
-    pass
-
-
-@litecore.mappings.abc.implements(LastUpdatedOrderedDict)
-class StringKeyOnlyLastUpdatedOrderedDict(
-        litecore.mappings.mixins.StringKeyOnlyMixin,
-        litecore.mappings.abc.BaseMutableMapping,
-):
-    pass
-
-
-@litecore.mappings.abc.implements(collections.defaultdict)
-class StringKeyOnlyDefaultDict(
-        litecore.mappings.mixins.StringKeyOnlyMixin,
-        litecore.mappings.abc.BaseMutableMapping,
-):
-    pass
-
-
-@litecore.mappings.abc.implements(EnhancedDefaultDict)
-class StringKeyOnlyEnhancedDefaultDict(
-        litecore.mappings.mixins.StringKeyOnlyMixin,
-        litecore.mappings.abc.BaseMutableMapping,
-):
-    pass
-
-
-@litecore.mappings.abc.implements(collections.Counter)
-class StringKeyOnlyCounter(
-        litecore.mappings.mixins.StringKeyOnlyMixin,
-        litecore.mappings.abc.BaseMutableMapping,
-):
-    pass
-
-
-@litecore.mappings.abc.implements(EnhancedCounter)
-class StringKeyOnlyEnhancedCounter(
-        litecore.mappings.mixins.StringKeyOnlyMixin,
-        litecore.mappings.abc.BaseMutableMapping,
-):
-    pass
-
-
-@litecore.mappings.abc.implements(OrderedCounter)
-class StringKeyOnlyOrderedCounter(
-        litecore.mappings.mixins.StringKeyOnlyMixin,
-        litecore.mappings.abc.BaseMutableMapping,
-):
-    pass
+    depth = litecore.validate.as_int(depth)
+    if depth < 1:
+        msg = f'Depth must be >= 1; got {depth!r}'
+        raise ValueError(msg)
+    factory = functools.partial(defaultdict_factory, default_factory)
+    for _ in range(depth - 1):
+        factory = functools.partial(defaultdict_factory, factory)
+    return factory()

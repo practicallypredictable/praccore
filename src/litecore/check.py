@@ -11,9 +11,15 @@ from typing import (
 
 log = logging.getLogger(__name__)
 
+STR_OR_BYTES = (str, bytes, bytearray)
+
 
 def is_class(obj: Any) -> bool:
     return inspect.isclass(obj)
+
+
+def is_str_or_bytes(obj: Any) -> bool:
+    return isinstance(obj, STR_OR_BYTES)
 
 
 def is_iterable(
@@ -65,11 +71,7 @@ def is_iterable(
     return False
 
 
-def is_iterator(
-        obj: Any,
-        *,
-        only_registered: bool = False,
-) -> bool:
+def is_iterator(obj: Any, *, only_registered: bool = False) -> bool:
     if isinstance(obj, collections.abc.Iterator):
         return True
     elif not only_registered:
@@ -81,3 +83,11 @@ def is_iterator(
             return False
     else:
         return False
+
+
+def is_mapping(obj: Any) -> bool:
+    return isinstance(obj, collections.abc.Mapping)
+
+
+def is_iterable_but_do_not_recurse(obj: Any) -> bool:
+    return is_iterable(obj) and not is_str_or_bytes(obj)

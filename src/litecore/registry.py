@@ -9,76 +9,96 @@ import types
 from typing import (
     Any,
     Callable,
-    Hashable,
+    Iterable,
     Iterator,
     Optional,
-    Type,
-    Union,
 )
+
+from litecore import LitecoreError as _ErrorBase
+import litecore.mappings.stringkey
+import litecore.mappings.setonce
 
 log = logging.getLogger(__name__)
 
 
-class ClassRegistry(collections.abc.Mapping):
-    """Mapping of hashable keys to class objects.
+class StringKeyRegistryMapping(
+        litecore.mappings.stringkey.StringKeyDict,
+        litecore.mappings.setonce.SetKeyOnceMutableMapping,
+):
+    """Underlying mapping class for registering objects.
+
+    Keys are constrained to be strings and may only be set once.
 
     """
+    pass
+
+
+class RegistryValueError(_ErrorBase, ValueError):
+    """Encountered an error while attempting to insert a registry entry."""
+    pass
+
+
+class StringKeyRegistry(collections.abc.Mapping):
+    """Class for mapping of string keys to objects.
+
+    Keyword Arguments:
+        key:
+        items: optional
+
+    """
+    mapping_factory = StringKeyRegistryMapping
+    default_key = operator.attrgetter('__name__')
 
     def __init__(
             self,
             *,
-            insert_only: bool = True,
-            key_getter: Callable[[Type], Hashable] = operator.attrgetter('__name__'),
-            factory: Type[collections.abc.MutableMapping] = collections.OrderedDict,
+            key: Optional[Callable[[Any], str]] = None,
+            items: Optional[Iterable[Any]] = None,
     ) -> None:
-        self.insert_only = insert_only
-        self.key_getter = key_getter
-        self._registry = factory()
+        self.key = key if key is not None else self.default_key
+        self._registry = self.mapping_factory()
+        if items:
+            self._registry.update(items)
 
     def __repr__(self) -> str:
         return (
             f'{type(self).__name__}('
-            f'insert_only={self.insert_only!r}'
-            f', key_getter={self.key_getter!r}'
-            f', factory={type(self._registry)}'
-            f') with {len(self)} registered classes>'
+            f', key={self.key}'
+            f', items={self._registry!r}'
+            f')'
         )
 
-    def __str__(self) -> str:
-        return str(self._registry)
-
-    def __getitem__(self, key: Hashable) -> Type:
+    def __getitem__(self, key: str) -> Any:
         return self._registry[key]
 
     def __len__(self) -> int:
         return len(self._registry)
 
-    def __iter__(self) -> Iterator[Type]:
+    def __iter__(self) -> Iterator[Any]:
         return iter(self._registry)
 
     def view(self) -> types.MappingProxyType:
-        """Return a read-only view of the class registry contents."""
+        """Return a read-only view of the  registry contents."""
         return types.MappingProxyType(self._registry)
 
-    def register_class(
+    def insert(
             self,
-            class_obj: Type,
+            obj: Any,
             *,
-            key: Optional[Hashable] = None,
+            key: Optional[str] = None,
     ) -> None:
-        """Register a class object with a given or generated key.
+        """Add a class object with a given or generated key to the registry.
 
-        Arguments:
+        Positional Arguments:
             class_obj: the class object to be registered
 
         Keyword Arguments:
-            key: (optional) hashable key to map to the registered class object
-
-        If key is None, a key is generated using the registry's default key
-        getter specified at instnatiation of the registry.
+            key: string key to map to the registered class object;
+                optional, default is None, in which case the registry's
+                default key getter is used
 
         Raises:
-            ValueError: an empty key is supplied; or, the key already exists
+            RegistryValueError: an empty key is supplied; or, the key already exists
                 in the registry and the registry insert_only attribute is True.
 
         Note:
@@ -88,81 +108,44 @@ class ClassRegistry(collections.abc.Mapping):
         """
         if key is None:
             try:
-                key = self.key_getter(class_obj)
-            except Exception as err:
+                key = self.key(obj)
+            except (AttributeError, KeyError, TypeError) as err:
                 msg = (
-                    f'Could not get key for class object {class_obj!r}'
-                    f' using key getter {self.key_getter!r}'
+                    f'Could not get key for {obj!r}'
+                    f' using key getter {self.key!r}'
                 )
-                raise ValueError(msg) from err
+                raise RegistryValueError(msg) from err
         if not key:
-            msg = f'Empty registry key for object {class_obj!r}'
-            raise ValueError(msg)
-        if key in self._registry:
-            if self.insert_only:
-                msg = f'Key {key!r} already in insert-only registry'
-                raise ValueError(msg)
-            else:
-                msg = (
-                    f'Key {key!r} already in registry {self!r} '
-                    f'for object {self._registry[key]!r}; '
-                    f'overwriting with new object {class_obj!r}'
-                )
-                log.warn(msg)
-        self._registry[key] = class_obj
+            msg = f'Empty registry key for {obj!r}'
+            raise RegistryValueError(msg)
+        try:
+            self._registry[key] = obj
+        except (ValueError, KeyError, TypeError) as err:
+            msg = f'Could not insert registry key {key} for {obj!r}'
+            raise RegistryValueError(msg) from err
 
     def register(
             self,
-            _cls: Type = None,
+            _obj: Any = None,
             *,
-            key: Optional[Hashable] = None,
+            key: Optional[str] = None,
     ):
-        """Class decorator to add a class object to the registry.
+        """Decorator to add an object to the registry.
 
         """
-
-        def decorator(class_obj: Type):
-            self.register_class(class_obj, key)
-            return class_obj
-
-        if check.is_class(obj):
-            # Decorator invoked directly on the class definition
-            key = self.key_getter(obj)
-            self.register_class(obj, key)
+        def decorator(obj: Any):
+            self.insert(obj, key=key)
             return obj
-        else:
-            # Decorator invoked with the key as an argument
-            # The object definition needs to be handled by an inner decorator
-            key = obj
 
+        if _obj is None:
             return decorator
+        else:
+            return decorator(_obj)
 
-    def get(
-            self,
-            key: Hashable,
-            *,
-            default: Optional[Type] = None,
-    ) -> Union[Type, None]:
-        """[summary]
 
-        Arguments:
-            key {Hashable} -- [description]
+class StringKeyClassRegistry(StringKeyRegistry):
+    pass
 
-        Keyword Arguments:
-            default {Optional[Type]} -- [description] (default: {None})
 
-        Raises:
-            KeyError -- [description]
-
-        Returns:
-            Union[Type, None] -- [description]
-        """
-
-        try:
-            return self._registry[key]
-        except KeyError as err:
-            if default is not None:
-                return default
-            else:
-                msg = f'No key {key!r} in class registry {self!r}'
-                raise KeyError(msg) from err
+class StringKeyFunctionRegistry(StringKeyRegistry):
+    pass

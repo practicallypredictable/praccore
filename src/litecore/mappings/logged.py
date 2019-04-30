@@ -1,36 +1,9 @@
 import logging
 
-import litecore.sentinel
 import litecore.diagnostics
 import litecore.mappings.exceptions
 
 log = logging.getLogger(__name__)
-_NOTHING = litecore.sentinel.create(name='_NOTHING')
-
-
-class StringKeyOnlyMixin:
-    __slots__ = ()
-
-    def __setitem__(self, key, value):
-        if not isinstance(key, str):
-            msg = f'Keys must be strings; got {key!r}'
-            raise litecore.mappings.exceptions.KeyTypeError(msg)
-        super().__setitem__(key, value)
-
-
-class SetKeyOnceMixin:
-    __slots__ = ()
-
-    def __setitem__(self, key, value):
-        existing = super().get(key, _NOTHING)
-        if existing is not _NOTHING:
-            msg = (
-                f'Key {key!r} is already set; '
-                f'value is {existing!r}; '
-                f'attempted to set value to {value!r}'
-            )
-            raise KeyError(msg)
-        super().__setitem__(key, value)
 
 
 def _log_get_item(logger, level, instance, key):

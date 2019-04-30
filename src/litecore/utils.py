@@ -1,8 +1,4 @@
-import collections
-import contextlib
 import logging
-import pathlib
-import os
 
 from typing import (
     Any,
@@ -17,20 +13,13 @@ import litecore.check
 log = logging.getLogger(__name__)
 
 
-class LitecoreError(Exception):
-    """Base class for all exceptions raised by this package."""
-    pass
-
-
-_DEFAULT_ENCODING = 'utf-8'
-
-DO_NOT_RECURSE = (str, bytes, bytearray)
+DEFAULT_ENCODING = 'utf-8'
 
 
 def to_str(
         str_or_bytes: Union[str, bytes],
         *,
-        decode_from: str = _DEFAULT_ENCODING,
+        decode_from: str = DEFAULT_ENCODING,
 ) -> str:
     if isinstance(str_or_bytes, bytes):
         return str_or_bytes.decode(decode_from)
@@ -41,7 +30,7 @@ def to_str(
 def to_bytes(
         str_or_bytes: Union[str, bytes],
         *,
-        encode_to: str = _DEFAULT_ENCODING,
+        encode_to: str = DEFAULT_ENCODING,
 ) -> bytes:
     if isinstance(str_or_bytes, str):
         return str_or_bytes.encode(encode_to)
@@ -81,9 +70,9 @@ def to_dict(
             items[class_name_key] = obj.__class__.__name__
         return items
 
-    if isinstance(obj, DO_NOT_RECURSE):
+    if litecore.check.is_str_or_bytes(obj):
         return obj
-    elif isinstance(obj, collections.abc.Mapping):
+    elif litecore.check.is_mapping(obj):
         return _process_dict(obj)
     elif litecore.check.is_iterable(obj):
         return [to_dict(item, class_name_key=class_name_key) for item in obj]
@@ -100,22 +89,28 @@ def to_dict(
         return obj
 
 
+class _ConstantFunction:
+    def __init__(self, value):
+        self._value = value
+
+    def __call__(self):
+        return self._value
+
+
 def constant_factory(constant: Any) -> Callable[[], Any]:
-    return lambda: constant
+    return _ConstantFunction(constant)
 
 
-def get_qualname(class_obj):
-    module = class_obj.__module__
-    try:
-        class_name = class_obj.__qualname__
-    except Exception:
-        class_name = class_obj.__name__
-        msg = (
-            'Could not find qualname for %s in module %s; '
-            'logging using name instead'
-        )
-        log.warning(msg, class_name, module)
-    return class_name
+_BUILTINS = str.__class__.__module__
+
+
+def full_class_name(obj):
+    cls = type(obj)
+    module = cls.__module__
+    if module is None or module == _BUILTINS:
+        return cls.__qualname__
+    else:
+        return f'{module}.{obj.__class__.__qualname__}'
 
 
 def bind(func, instance, *, name: Optional[str] = None):
@@ -126,26 +121,7 @@ def bind(func, instance, *, name: Optional[str] = None):
     return bound_method
 
 
-def generic_repr(args, kwargs) -> str:
-    positional = ', '.join(repr(arg) for arg in args)
-    keyword = ', '.join(
-        f'{key!r}={value!r}'
-        for key, value in kwargs.items()
-    )
-    s = positional if positional else ''
-    if positional and keyword:
-        s += ', '
-    if keyword:
-        s += keyword
-    return s
-
-
-@contextlib.contextmanager
-def cwd(path: pathlib.Path):
-    """Change working directory and return to previous directory on exit."""
-    current = pathlib.Path.cwd()
-    try:
-        os.chdir(path)
-        yield
-    finally:
-        os.chdir(current)
+def args_kwargs_repr(*args, **kwargs) -> str:
+    args_repr = [repr(arg) for arg in args]
+    kwargs_repr = [f'{key}={value}' for key, value in kwargs.items()]
+    return ', '.join(args_repr + kwargs_repr)
