@@ -9,16 +9,15 @@ from typing import (
     Callable,
     Hashable,
     Iterable,
+    Optional,
     Sequence,
     Tuple,
 )
 
-import litecore.sentinel
-import litecore.sequences.sequences
+from litecore.sentinel import NO_VALUE
+import litecore.iterators.recipes
 
 log = logging.getLogger(__name__)
-
-_NO_VALUE = litecore.sentinel.create(name='_NO_VALUE')
 
 
 def ilen(iterable: Iterable[Any]) -> int:
@@ -56,8 +55,75 @@ def ilen(iterable: Iterable[Any]) -> int:
         return len(iterable)
     except TypeError:
         counter = itertools.count()
-        litecore.sequences.sequences.consume(zip(iterable, counter))
+        litecore.iteration.recipes.consume(zip(iterable, counter))
         return next(counter)
+
+
+def _argminmax(
+    func: Callable,
+    index: int,
+    iterable: Iterable[Any],
+    *,
+    key: Optional[Callable[[Any], Any]] = None,
+) -> Any:
+    if key is None and isinstance(iterable, collections.abc.Mapping):
+        return func(iterable.items(), key=operator.itemgetter(1))[0]
+    else:
+        try:
+            if key is None:
+                return iterable.index(func(iterable))
+            else:
+                return iterable.index(func(iterable, key=key))
+        except AttributeError:
+            return litecore.iteration.recipes.argsort(iterable, key=key)[index]
+
+
+def argmin(
+    iterable: Iterable[Any],
+    *,
+    key: Optional[Callable[[Any], Any]] = None,
+) -> Any:
+    """
+
+    Examples:
+
+    >>> argmin('elephant')
+    5
+    >>> argmin([[10, 11], [0, 1, 2], [3, 4, 5, 6]], key=len)
+    0
+    >>> argmin({'a': 1, 'b': 0, 'c': 10})
+    'b'
+    >>> argmin({'a': 1, 'b': 0, 'c': 10, 'd': 'error'})
+    Traceback (most recent call last):
+     ...
+    TypeError: '<' not supported between instances of 'str' and 'int'
+
+    """
+    return _argminmax(min, 0, iterable, key=key)
+
+
+def argmax(
+    iterable: Iterable[Any],
+    *,
+    key: Optional[Callable[[Any], Any]] = None,
+) -> Any:
+    """
+
+    Examples:
+
+    >>> argmax('elephant')
+    7
+    >>> argmax([[10, 11], [0, 1, 2], [3, 4, 5, 6]], key=len)
+    2
+    >>> argmax({'a': 1, 'b': 0, 'c': 10})
+    'c'
+    >>> argmax({'a': 1, 'b': 0, 'c': 10, 'd': 'error'})
+    Traceback (most recent call last):
+     ...
+    TypeError: '>' not supported between instances of 'str' and 'int'
+
+    """
+    return _argminmax(max, -1, iterable, key=key)
 
 
 def count_true(
@@ -82,7 +148,7 @@ def _consecutive_pairs(iterable: Iterable[Any], op: Callable) -> bool:
     # Helper function for the sequence comparisons below
     return all(
         op(left, right)
-        for left, right in litecore.sequences.sequences.pairwise(iterable)
+        for left, right in litecore.iteration.recipes.pairwise(iterable)
     )
 
 
@@ -178,14 +244,70 @@ def non_increasing(iterable: Iterable[Any]) -> bool:
     return _consecutive_pairs(iterable, operator.ge)
 
 
+def all_equal_items(
+        iterable: Iterable[Any],
+        *,
+        eq: Optional[Callable[[Any, Any], bool]] = None,
+) -> bool:
+    """Check whether all items of a general iterable are the same.
+
+    The eq keyword argument, if provided, should specify a two-argument
+    callable returning a boolean value representing equality. The default value
+    of None correponds to the usual equality operator.
+
+    Arguments:
+        iterable: object to be checked
+
+    Keyword Arguments:
+        eq: two-argument equality callable (optional; defaults to None)
+
+    Returns:
+        True if all items of iterable are the same (as defined by the equality
+        keyword argument, if specified), otherwise False.
+
+    Note:
+        * Returns True for an empty iterable.
+        * See all_equal_items_sequence() for a function specialized for
+          built-in sequences such as lists and tuples.
+        * Will not return if passed an infinite iterator.
+
+    Examples:
+
+    >>> all_equal_items([1] * 5)
+    True
+    >>> all_equal_items([])
+    True
+    >>> all_equal_items(range(5))
+    False
+    >>> iterable = iter([0, 1, 1, 1])
+    >>> next(iterable)
+    0
+    >>> all_equal_items(iterable)
+    True
+    >>> all_equal_items([2, 4, 6, 8], eq=lambda a, b: a % 2 == b % 2)
+    True
+
+    """
+    it = iter(iterable)
+    if eq is None:
+        eq = operator.eq
+    try:
+        first = next(it)
+    except StopIteration:
+        return True
+    return all(eq(first, item) for item in it)
+
+
 def all_equal_items_sequence(sequence: Sequence[Any]) -> bool:
     """Check whether all items of a sequence are equal.
 
     This is an optimized form of all_equal_items() below, which should be
     faster for built-in sequences such as lists. Although it will work for any
     container implementing the interface of collections.abc.Sequence (see
-    https://docs.python.org/3/library/collections.abc.html), the general
-    all_equal() function should be faster on general iterables.
+    https://docs.python.org/3/library/collections.abc.html), the function
+    all_equal_items_sorted() function should be faster on already-sorted
+    iterables. The general all_equal_items() function may also be faster on
+    user-defined iterable classes.
 
     Arguments:
         sequence: object to be checked
@@ -217,14 +339,29 @@ def all_equal_items_sequence(sequence: Sequence[Any]) -> bool:
         return True
 
 
-def all_equal_items(iterable: Iterable[Any]) -> bool:
-    """Check whether all items of an iterable are the same.
+def all_equal_items_sorted(
+        iterable: Iterable[Any],
+        *,
+        key: Optional[Callable[[Any], Any]] = None,
+) -> bool:
+    """Check whether all items of a sorted iterable are the same.
+
+    Note this function uses itertools.groupby, which assumes the iterable
+    is sorted by some key in order to work as expected. Whichever key function
+    was used to sort the iterable should also be provided to this function
+    via the optional key keyword argument. The key argument defaults to None,
+    which is appropriate when the iterable was sorted wihtout using a custom
+    key.
 
     Arguments:
         iterable: object to be checked
 
+    Keyword Arguments:
+        key: one-argument sort key callable (optional; defaults to None)
+
     Returns:
-        True if all items of iterable are the same, otherwise False.
+        True if all items of iterable are the same (as defined by the sort key,
+        if specified), otherwise False.
 
     Note:
         * Returns True for an empty iterable.
@@ -234,19 +371,19 @@ def all_equal_items(iterable: Iterable[Any]) -> bool:
 
     Examples:
 
-    >>> all_equal_items([1] * 1000)
+    >>> all_equal_items_sorted([1] * 1000)
     True
-    >>> all_equal_items([1] * 999 + [2])
+    >>> all_equal_items_sorted([1] * 999 + [2])
     False
-    >>> all_equal_items([set([3])] * 100)
+    >>> all_equal_items_sorted([set([3])] * 100)
     True
-    >>> all_equal_items([set([3])] * 99 + [set([4])])
+    >>> all_equal_items_sorted([set([3])] * 99 + [set([4])])
     False
-    >>> all_equal_items([])
+    >>> all_equal_items_sorted([])
     True
 
     """
-    groups = itertools.groupby(iterable)
+    groups = itertools.groupby(iterable, key)
     return next(groups, True) and not next(groups, False)
 
 
@@ -491,7 +628,7 @@ def same_ordered_items(*iterables: Tuple[Iterable[Any]]) -> bool:
     if len(iterables) < 2:
         msg = f'Got {len(iterables)} iterables; must provide at least 2'
         raise ValueError(msg)
-    zipped_items = itertools.zip_longest(*iterables, fillvalue=_NO_VALUE)
+    zipped_items = itertools.zip_longest(*iterables, fillvalue=NO_VALUE)
     return all(all_equal_items_sequence(item) for item in zipped_items)
 
 

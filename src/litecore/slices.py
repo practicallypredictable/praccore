@@ -1,12 +1,37 @@
+import operator
+
 from typing import (
     Any,
     Iterator,
     Optional,
     Sequence,
+    Union,
 )
 
 
-def adjust_slice_endpoint(
+def stop_index(index_or_slice: Union[int, slice]) -> Union[None, int]:
+    try:
+        stop = index_or_slice.stop
+        if stop is None:
+            return None
+        step = index_or_slice.step
+        if step is None:
+            step = 1
+        elif step == 0:
+            raise ValueError(f'slice step cannot be zero')
+        start = index_or_slice.start
+        if start is None:
+            start = 0 if step > 0 else -1
+        return range(start, stop, step)[-1]
+    except AttributeError:
+        try:
+            return operator.index(index_or_slice)
+        except TypeError as err:
+            msg = f'expected an integer or a slice; got {index_or_slice!r}'
+            raise TypeError(msg) from err
+
+
+def adjust_endpoint(
         *,
         length: int,
         endpoint: int,
@@ -21,7 +46,7 @@ def adjust_slice_endpoint(
     return endpoint
 
 
-def adjust_slice_args(
+def adjust_args(
         *,
         length: int,
         start: Optional[int] = None,
@@ -35,12 +60,12 @@ def adjust_slice_args(
     if start is None:
         start = length - 1 if step < 0 else 0
     else:
-        start = adjust_slice_endpoint(
+        start = adjust_endpoint(
             length=length, endpoint=start, step=step)
     if stop is None:
         stop = -1 if step < 0 else length
     else:
-        stop = adjust_slice_endpoint(
+        stop = adjust_endpoint(
             length=length, endpoint=stop, step=step)
     return start, stop, step
 
@@ -52,7 +77,7 @@ def slice_indices(
         stop: Optional[int] = None,
         step: Optional[int] = None,
 ) -> Iterator[int]:
-    start, stop, step = adjust_slice_args(
+    start, stop, step = adjust_args(
         length=length, start=start, stop=stop, step=step)
     index = start
     while (index > stop) if step < 0 else (index < stop):

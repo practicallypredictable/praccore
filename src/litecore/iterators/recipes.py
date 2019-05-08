@@ -18,22 +18,15 @@ from typing import (
     Union,
 )
 
-import litecore.sentinel
+from litecore.sentinels import NO_VALUE
 
 log = logging.getLogger(__name__)
 
-_NO_VALUE = litecore.sentinel.create(name='_NO_VALUE')
-
 DO_NOT_FLATTEN = (str, bytes, bytearray)
-"""Native data types which should never be flattened.
-
-Trying to flatten by iterating over these data types will hit the
-built-in Python recursion stack limit. This module constant is intended
-as a convenience and a reminder.
-"""
+"""Native data types which should not be flattened or recursed into."""
 
 
-def iter_with(iterable: Iterable[Any]):
+def iter_with(iterable: Iterable[Any]) -> Iterator[Any]:
     with iterable:
         for item in iterable:
             yield item
@@ -43,7 +36,7 @@ def consume(iterator: Iterator[Any], *, items: Optional[int] = None) -> None:
     """Consume items of an iterator.
 
     Without the optional items keyword argument, consumes all of the iterator
-    very quickly. With items specified, consumes at most that many items of the
+    quickly. With items specified, consumes at most that many items of the
     iterator. If the iterator has fewer items than the specified number, the
     iterator will be fully consumed.
 
@@ -189,7 +182,7 @@ def take(items: int, iterable: Iterable[Any]) -> List[Any]:
     [0, 1]
     >>> take(0, range(5))
     []
-    >>> take(6, range(5))
+    >>> take(6, iter(range(5)))
     [0, 1, 2, 3, 4]
 
     """
@@ -201,13 +194,41 @@ def take_batches(items: int, iterable: Iterable[Any]) -> Iterator[List[Any]]:
 
     >>> list(take_batches(3, range(8)))
     [[0, 1, 2], [3, 4, 5], [6, 7]]
-    >>> list(take_batches(10, range(8)))
+    >>> list(take_batches(10, iter(range(8))))
     [[0, 1, 2, 3, 4, 5, 6, 7]]
     >>> list(take_batches(3, []))
     []
 
     """
     return iter(functools.partial(take, items, iter(iterable)), [])
+
+
+def take_indices(
+    indices: Sequence[int],
+    iterable: Iterable[Any],
+) -> Iterator[Any]:
+    """
+
+    >>> data = range(10)
+    >>> it = iter(data)
+    >>> take_indices([1, 3, 5], data)
+    [1, 3, 5]
+    >>> take_indices([1, 3, 5], it)
+    [1, 3, 5]
+    >>> list(it)
+    [6, 7, 8, 9]
+    >>> take_indices([1, 11], data)
+    Traceback (most recent call last):
+     ...
+    IndexError: range object index out of range
+
+
+    """
+    try:
+        return [iterable[item] for item in indices]
+    except TypeError:
+        items = take(max(indices) + 1, iterable)
+        return [items[item] for item in indices]
 
 
 def groups_of(
@@ -412,6 +433,69 @@ def last(iterable: Iterable[Any], *, default: Optional[Any] = None) -> Any:
             return default
 
 
+def butlast(iterable: Iterable[Any]) -> Iterator[Any]:
+    """
+
+    Examples:
+
+    >>> list(butlast(range(5)))
+    [0, 1, 2, 3]
+    >>> list(butlast(iter(range(5))))
+    [0, 1, 2, 3]
+
+    """
+    try:
+        yield from iterable[:-1]
+    except IndexError:
+        return iter(())
+    except TypeError:
+        iterator = iter(iterable)
+        try:
+            item = next(iterator)
+        except StopIteration:
+            return iter(())
+        while True:
+            prev = item
+            try:
+                item = next(iterator)
+            except StopIteration:
+                break
+            else:
+                yield prev
+
+
+def unique_with_index(
+        iterable: Iterable[Any],
+        *,
+        key: Optional[Callable[[Any], Any]] = None,
+) -> Iterator[Tuple[int, Any]]:
+    hashables_seen = set()
+    saw_hashable = hashables_seen.add
+    unhashables_seen = []
+    saw_unhashable = unhashables_seen.append
+    if key is None:
+        for index, item in enumerate(iterable):
+            try:
+                if item not in hashables_seen:
+                    saw_hashable(item)
+                    yield index, item
+            except TypeError:
+                if item not in unhashables_seen:
+                    saw_unhashable(item)
+                    yield index, item
+    else:
+        for index, item in enumerate(iterable):
+            item_key = key(item)
+            try:
+                if item_key not in hashables_seen:
+                    saw_hashable(item_key)
+                    yield index, item
+            except TypeError:
+                if item_key not in unhashables_seen:
+                    saw_unhashable(item_key)
+                    yield index, item
+
+
 def unique(
         iterable: Iterable[Any],
         *,
@@ -452,31 +536,29 @@ def unique(
     [{'value': 1, 'even': False}, {'value': 2, 'even': True}]
 
     """
-    hashables_seen = set()
-    saw_hashable = hashables_seen.add
-    unhashables_seen = []
-    saw_unhashable = unhashables_seen.append
-    if key is None:
-        for item in iterable:
-            try:
-                if item not in hashables_seen:
-                    saw_hashable(item)
-                    yield item
-            except TypeError:
-                if item not in unhashables_seen:
-                    saw_unhashable(item)
-                    yield item
-    else:
-        for item in iterable:
-            item_key = key(item)
-            try:
-                if item_key not in hashables_seen:
-                    saw_hashable(item_key)
-                    yield item
-            except TypeError:
-                if item_key not in unhashables_seen:
-                    saw_unhashable(item_key)
-                    yield item
+    for i, item in unique_with_index(iterable, key=key):
+        yield item
+
+
+def argunique(iterable, *, key=None) -> Iterator[int]:
+    """
+
+    >>> list(argunique('AAAABBBCCDAABBB'))
+    [0, 4, 7, 9]
+    >>> list(argunique('ABBCcAD', key=str.lower))
+    [0, 1, 3, 6]
+    >>> list(argunique([]))
+    []
+    >>> list(argunique(range(10), key=type))
+    [0]
+    >>> unhashable = [{'value': n, 'even': n % 2 == 0} for n in range(1, 10)]
+    >>> import operator
+    >>> list(argunique(unhashable, key=operator.itemgetter('even')))
+    [0, 1]
+
+    """
+    for i, item in unique_with_index(iterable, key=key):
+        yield i
 
 
 def drop(items: int, iterable: Iterable[Any]) -> Iterator[Any]:
@@ -775,9 +857,9 @@ def round_robin_longest(*iterables: Iterable[Any]) -> Iterator[Any]:
     [0, 'a', ... 2, 'c', <class 'dict'>, 'd', <class 'list'>, 'e']
 
     """
-    zipped = itertools.zip_longest(*iterables, fillvalue=_NO_VALUE)
+    zipped = itertools.zip_longest(*iterables, fillvalue=NO_VALUE)
     chained = itertools.chain.from_iterable(zipped)
-    return itertools.filterfalse(lambda item: item == _NO_VALUE, chained)
+    return itertools.filterfalse(lambda item: item == NO_VALUE, chained)
 
 
 def rotate_cycle(iterable: Iterable[Any]) -> Iterator[Tuple[Any, ...]]:
@@ -972,8 +1054,8 @@ def window(
     if start > 0:
         # Move to the start point, ignore the values
         consume(iterator, items=start)
-        item, iterator = peek(iterator, default=_NO_VALUE)
-        if item is _NO_VALUE:
+        item, iterator = peek(iterator, default=NO_VALUE)
+        if item is NO_VALUE:
             # We started past the end of the original iterable
             # So return empty tuple
             return ()
@@ -1057,7 +1139,7 @@ def replace(
     if size < 1:
         msg = f'Window size must be at least one item; got {size!r}'
         raise ValueError(msg)
-    windows = window(size, pad(iterable, value=_NO_VALUE, times=size - 1))
+    windows = window(size, pad(iterable, value=NO_VALUE, times=size - 1))
     replacements = 0
     for values in windows:
         if _to_replace(where, values):
@@ -1066,7 +1148,7 @@ def replace(
                 yield from _replace_with(replace_with, values)
                 consume(windows, items=size - 1)
                 continue
-        if values and values[0] is not _NO_VALUE:
+        if values and values[0] is not NO_VALUE:
             yield values[0]
 
 
@@ -1285,8 +1367,8 @@ def zip_strict(
     []
 
     """
-    for values in itertools.zip_longest(*iterables, fillvalue=_NO_VALUE):
-        if any(v is _NO_VALUE for v in values):
+    for values in itertools.zip_longest(*iterables, fillvalue=NO_VALUE):
+        if any(v is NO_VALUE for v in values):
             msg = f'All iterables must have the same length'
             raise ValueError(msg)
         yield values
@@ -1390,3 +1472,21 @@ def groupby_unsorted(
         indexes[key(item)].append(index)
     for key, index_values in indexes.items():
         yield key, (sequence[index] for index in index_values)
+
+
+def argsort(
+    iterable: Iterable[Any],
+    *,
+    key: Optional[Callable[[Any], Any]] = None,
+    reverse: bool = False,
+) -> Sequence[Any]:
+    if isinstance(iterable, collections.abc.Mapping):
+        iterator = ((v, k) for k, v in iterable.items())
+    else:
+        iterator = ((v, k) for k, v in enumerate(iterable))
+    if key is None:
+        indices = [k for v, k in sorted(iterator, reverse=reverse)]
+    else:
+        indices = [k for v, k in sorted(
+            iterator, key=lambda item: item[0], reverse=reverse)]
+    return indices

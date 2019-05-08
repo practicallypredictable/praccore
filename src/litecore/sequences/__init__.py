@@ -12,6 +12,8 @@ a few third-party packages on PyPI, including:
     https://github.com/pytoolz/toolz
     https://github.com/erikrose/more-itertools
     https://github.com/kachayev/fn.py
+    https://github.com/mahmoud/boltons
+    https://github.com/Erotemic/ubelt/tree/master/ubelt
 
 Many of those packages were developed years ago and support legacy Python 2.
 Some of these packages implement what are conceptually the same functions in
@@ -27,16 +29,12 @@ integral arguments where an int is expected, will generally be detected
 by the underlying built-in or itertools function.
 
 """
-from .slice import (  # noqa: F401
-    adjust_slice_endpoint,
-    adjust_slice_args,
-    slice_indices,
-    iter_slice,
-)
 
 from .classes import (  # noqa: F401
     SequenceProxyType,
-    CachedIterator,
+    BoundedList,
+    LazyList,
+    lazylist,
 )
 
 from .linkedlist import (  # noqa: F401
@@ -47,80 +45,6 @@ from .linkedlist import (  # noqa: F401
     DoublyLinkedList,
 )
 
-from .orderedset import (  # noqa: F401
-    OrderedSet,
-)
-
-from .mixins import (  # noqa: F401
-    logged_sequence,
-    LoggedSequenceMixin,
-)
-
-from .runlengths import (  # noqa: F401
-    Run,
-    RunLengths,
-)
-
-from .reductions import (  # noqa: F401
-    ilen,
-    decreasing,
-    increasing,
-    non_decreasing,
-    non_increasing,
-    same_items,
-    same_items_unhashable,
-    same_ordered_items,
-    all_distinct_items,
-    all_equal_items,
-    all_equal_items_sequence,
-    inner_product,
-)
-
-from .sequences import (  # noqa: F401
-    DO_NOT_FLATTEN,
-    consume,
-    take,
-    take_batches,
-    groups_of,
-    peek,
-    drop,
-    unique,
-    first,
-    only_one,
-    skip_first,
-    nth,
-    tail,
-    last,
-    flatten,
-    flatten_recursive,
-    flatmap,
-    prepend,
-    pad,
-    finite_cycle,
-    enumerate_cycle,
-    round_robin,
-    round_robin_longest,
-    rotate_cycle,
-    intersperse,
-    partition,
-    split,
-    take_then_split,
-    split_after,
-    split_before,
-    window,
-    pairwise,
-    replace,
-    tabulate,
-    difference,
-    iterate,
-    keep_calling,
-    force_reverse,
-    zip_strict,
-    unzip,
-    unzip_finite,
-    most_recent_run,
-    groupby_unsorted,
-)
 
 from .find import (  # noqa: F401
     find_all,

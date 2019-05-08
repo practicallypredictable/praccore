@@ -13,7 +13,7 @@ from typing import (
     Union,
 )
 
-import litecore.sequences.slice
+import litecore.slices
 
 NodeType = TypeVar('NodeType', bound='Node')
 

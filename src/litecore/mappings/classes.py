@@ -9,7 +9,6 @@ from typing import (
     Optional,
 )
 
-import litecore.validate
 from litecore.mappings.types import MutableMappingFactory
 
 log = logging.getLogger(__name__)

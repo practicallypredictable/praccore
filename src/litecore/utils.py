@@ -1,19 +1,31 @@
+import functools
+import inspect
 import logging
+import types
 
 from typing import (
     Any,
     Callable,
-    Dict,
     Optional,
     Union,
 )
-
-import litecore.check
 
 log = logging.getLogger(__name__)
 
 
 DEFAULT_ENCODING = 'utf-8'
+
+
+def isfunction(obj: Any) -> bool:
+    if not callable(obj):
+        return False
+    return isinstance(obj, (
+        types.BuiltinFunctionType,
+        types.FunctionType,
+        types.MethodType,
+        types.LambdaType,
+        functools.partial,
+    ))
 
 
 def to_str(
@@ -38,55 +50,6 @@ def to_bytes(
         return str_or_bytes
 
 # TODO: bytesarray?
-
-
-def to_dict(
-        obj: Any,
-        *,
-        class_name_key: Optional[str] = None,
-        skip_callables: bool = True,
-        skip_private: bool = True,
-) -> Dict[str, Any]:
-    # TODO: FIX THIS?
-    # https://stackoverflow.com/questions/1036409/recursively-convert-python-object-graph-to-dictionary/22679824#22679824
-
-    def _skip_key(key: str) -> bool:
-        if skip_private and key.startswith('_'):
-            return True
-        return False
-
-    def _skip_item(item: Any) -> bool:
-        if skip_callables and callable(item):
-            return True
-        return False
-
-    def _process_dict(obj: Any, *, class_name_key: Optional[str] = None,):
-        items = {
-            key: to_dict(item, class_name_key=class_name_key)
-            for key, item in obj.items()
-            if not _skip_key(key) and not _skip_item(item)
-        }
-        if class_name_key is not None and hasattr(obj, '__class__'):
-            items[class_name_key] = obj.__class__.__name__
-        return items
-
-    if litecore.check.is_str_or_bytes(obj):
-        return obj
-    elif litecore.check.is_mapping(obj):
-        return _process_dict(obj)
-    elif litecore.check.is_iterable(obj):
-        return [to_dict(item, class_name_key=class_name_key) for item in obj]
-    elif hasattr(obj, '_ast'):
-        return to_dict(obj._ast())
-    elif hasattr(obj, '_asdict'):
-        return to_dict(obj._asdict())
-    elif hasattr(obj, '__dict__'):
-        return _process_dict(vars(obj), class_name_key=class_name_key)
-    elif hasattr(obj, '__slots__'):
-        slots = dict((slot, getattr(obj, slot)) for slot in obj.__slots__)
-        return to_dict(slots, class_name_key=class_name_key)
-    else:
-        return obj
 
 
 class _ConstantFunction:
@@ -125,3 +88,12 @@ def args_kwargs_repr(*args, **kwargs) -> str:
     args_repr = [repr(arg) for arg in args]
     kwargs_repr = [f'{key}={value}' for key, value in kwargs.items()]
     return ', '.join(args_repr + kwargs_repr)
+
+
+def get_caller_module():
+    caller = inspect.stack()[2][0]
+    return caller.f_globals['__name__']
+
+
+def argslen(func):
+    return len(getattr(inspect.signature(func), 'parameters'))
