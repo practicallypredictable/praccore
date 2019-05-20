@@ -1,108 +1,239 @@
 import abc
 import collections.abc
+import dataclasses
+import enum
+import inspect
+import itertools
 
 from typing import (
     Any,
     Callable,
+    Dict,
     Hashable,
     Iterator,
+    List,
     Mapping,
     Optional,
     Tuple,
     Type,
+    Union,
 )
 
 import litecore.utils
+from litecore.sentinels import NO_VALUE
+
+# TODO: fix str()?
 
 
-class Marker(abc.ABC):
-    @abc.abstractmethod
-    def __eq__(self, other):
-        pass
+class ClassMarkerFlag(enum.Flag):
+    NONE = 0
+    MAPPING = enum.auto()
+    SEQUENCE = enum.auto()
+    SET = enum.auto()
+    NAMED_TUPLE = enum.auto()
+    DATA_CLASS = enum.auto()
+    CLASS = enum.auto()
+    HAS_ATTRIBUTES = CLASS | DATA_CLASS | NAMED_TUPLE
+    SERIALIZED_AS_DICT = MAPPING | HAS_ATTRIBUTES
+    SERIALIZED_AS_LIST = SET | SEQUENCE
+    ALL = MAPPING | SEQUENCE | SET | NAMED_TUPLE | DATA_CLASS | CLASS
+
+    @classmethod
+    def from_object(
+            cls,
+            obj: Any,
+            *,
+            primitives: Optional[Tuple[Type, ...]] = None,
+    ) -> 'ClassMarkerFlag':
+        # TODO: handle ASTs?
+        if litecore.utils.is_dataclass_instance(obj):
+            return cls.DATA_CLASS
+        elif litecore.utils.is_namedtuple_instance(obj):
+            return cls.NAMED_TUPLE
+        elif isinstance(obj, collections.abc.Mapping):
+            return cls.MAPPING
+        elif litecore.utils.is_iterable(obj):
+            if litecore.utils.is_charts(obj):
+                return cls.NONE
+            elif primitives is not None and isinstance(obj, primitives):
+                return cls.NONE
+            else:
+                if isinstance(obj, collections.abc.Set):
+                    return cls.SET
+                elif isinstance(obj, collections.abc.Sequence):
+                    return cls.SEQUENCE
+                else:
+                    msg = f'incorrectly categorized iterable object {obj!r}'
+                    raise TypeError(msg)
+        elif inspect.isclass(obj):
+            return cls.CLASS
+        else:
+            return cls.NONE
 
 
-class SequenceItem(Marker):
-    def __init__(self, *, class_name: str, index: int, **kwargs):
+def filter_items(
+        items: Iterator[Tuple[str, Any]],
+        *,
+        skip_private: bool,
+) -> Iterator[Tuple[Hashable, Any]]:
+    for key, value in items:
+        skip = key.startswith('__')
+        skip = skip or (skip_private and key.startswith('_'))
+        skip = skip or litecore.utils.is_function(value)
+        if not skip:
+            yield key, value
+
+
+def _iter_mapping(obj: Any):
+    return obj.items()
+
+
+def _iter_collection(obj: Any):
+    return enumerate(obj)
+
+
+def _iter_namedtuple(obj: Any):
+    return obj._asdict().items()
+
+
+def _iter_dataclass(obj: Any):
+    return dataclasses.asdict(obj).items()
+
+
+def _iter_class(obj: Any):
+    try:
+        slots_iter = (
+            (slot, getattr(obj, slot))
+            for slot in getattr(obj, '__slots__')
+        )
+    except AttributeError:
+        slots_iter = iter(())
+    return itertools.chain(vars(obj).items(), slots_iter)
+
+
+_ITERATORS = {
+    ClassMarkerFlag.MAPPING: _iter_mapping,
+    ClassMarkerFlag.SEQUENCE: _iter_collection,
+    ClassMarkerFlag.SET: _iter_collection,
+    ClassMarkerFlag.NAMED_TUPLE: _iter_namedtuple,
+    ClassMarkerFlag.DATA_CLASS: _iter_dataclass,
+    ClassMarkerFlag.CLASS: _iter_class,
+}
+
+
+def classify(
+        obj: Any,
+        *,
+        primitives: Optional[Tuple[Type, ...]] = None,
+        skip_private: bool = True,
+) -> Tuple[Iterator[Any], ClassMarkerFlag]:
+    flag = ClassMarkerFlag.from_object(obj, primitives=primitives)
+    iterate_items = _ITERATORS.get(flag, None)
+    if iterate_items is None:
+        return iter(()), ClassMarkerFlag.NONE
+    items = (item for item in iterate_items(obj))
+    if flag & ClassMarkerFlag.HAS_ATTRIBUTES:
+        items = filter_items(items, skip_private=skip_private)
+    return flag, items
+
+
+class ClassMarker(abc.ABC):
+    def __init__(self, *, metadata: Mapping[str, Any], **kwargs):
         super().__init__(**kwargs)
-        self.class_name = class_name
+        self.metadata = metadata
+
+    def __repr__(self):
+        return (
+            f'<{type(self).__name__}('
+            f'metadata={self.metadata!r}'
+            f')>'
+        )
+
+    def __eq__(self, other):
+        if not isinstance(other, type(self)):
+            return NotImplemented
+        return all(
+            self.metadata[key] == other.metadata[key]
+            for key in ('module', 'qualname')
+        )
+
+    @staticmethod
+    def make_metadata_from_object(obj: Any, **kwargs):
+        cls = type(obj)
+        metadata = {
+            'module': cls.__module__,
+            'qualname': cls.__qualname__,
+        }
+        metadata.update(**kwargs)
+        return metadata
+
+
+class SequenceItem(ClassMarker):
+    def __init__(self, *, index: int, **kwargs):
+        super().__init__(**kwargs)
         self.index = index
 
     def __repr__(self):
-        return (
-            f'<{type(self).__name__}('
-            f'class_name={self.class_name!r}'
-            f', index={self.index!r}'
-            f')>'
-        )
+        s = super().__repr__().replace(')>', '')
+        return f'{s}, index={self.index!r})>'
 
     def __eq__(self, other):
-        try:
-            return self.class_name == other.class_name and self.index == other.index
-        except (AttributeError, TypeError):
-            return NotImplemented
+        eq = super().__eq__(other)
+        if eq is not True:
+            return eq
+        return self.index == other.index
 
 
-class SetItem(Marker):
-    def __init__(self, *, class_name: str, item: Hashable, **kwargs):
+class SetItem(ClassMarker):
+    def __init__(self, *, item: Hashable, **kwargs):
         super().__init__(**kwargs)
-        self.class_name = class_name
         self.item = item
 
     def __repr__(self):
-        return (
-            f'<{type(self).__name__}('
-            f'class_name={self.class_name!r}'
-            f', item={self.item!r}'
-            f')>'
-        )
+        s = super().__repr__().replace(')>', '')
+        return f'{s}, item={self.item!r})>'
 
     def __eq__(self, other):
-        try:
-            return self.class_name == other.class_name and self.item == other.item
-        except (AttributeError, TypeError):
-            return NotImplemented
+        eq = super().__eq__(other)
+        if eq is not True:
+            return eq
+        return self.item == other.item
 
 
-class AttributeMarker(Marker):
-    def __init__(self, *, class_name: str, attr: Any, **kwargs):
+class KeyMarker(ClassMarker):
+    def __init__(self, *, key: Hashable, **kwargs):
         super().__init__(**kwargs)
-        self.class_name = class_name
-        self.attr = attr
-
-    def __repr__(self):
-        return (
-            f'<{type(self).__name__}('
-            f'class_name={self.class_name!r}'
-            f', attr={self.attr!r}'
-            f')>'
-        )
-
-    def __eq__(self, other):
-        try:
-            return self.class_name == other.class_name and self.attr == other.attr
-        except (AttributeError, TypeError):
-            return NotImplemented
-
-
-class KeyMarker(Marker):
-    def __init__(self, *, class_name: str, key: Hashable, **kwargs):
-        super().__init__(**kwargs)
-        self.class_name = class_name
         self.key = key
 
     def __repr__(self):
-        return (
-            f'<{type(self).__name__}('
-            f'class_name={self.class_name!r}'
-            f', key={self.key!r}'
-            f')>'
-        )
+        s = super().__repr__().replace(')>', '')
+        return f'{s}, key={self.key!r})>'
 
     def __eq__(self, other):
-        try:
-            return self.class_name == other.class_name and self.key == other.key
-        except (AttributeError, TypeError):
-            return NotImplemented
+        eq = super().__eq__(other)
+        if eq is not True:
+            return eq
+        return self.key == other.key
+
+
+class MappingKey(KeyMarker):
+    pass
+
+
+class AttributeMarker(ClassMarker):
+    def __init__(self, *, attr: Any, **kwargs):
+        super().__init__(**kwargs)
+        self.attr = attr
+
+    def __repr__(self):
+        s = super().__repr__().replace(')>', '')
+        return f'{s}, attr={self.attr!r})>'
+
+    def __eq__(self, other):
+        eq = super().__eq__(other)
+        if eq is not True:
+            return eq
+        return self.attr == other.attr
 
 
 class ClassAttribute(AttributeMarker):
@@ -117,336 +248,240 @@ class DataClassField(AttributeMarker):
     pass
 
 
-class MappingKey(KeyMarker):
-    pass
-
-
-class RecursiveMarker(Marker):
+class RecursiveMarker(ClassMarker):
     def __init__(
             self,
             *,
-            object_id: int,
-            object_type: Type,
-            path: Optional[Tuple] = None):
-        self.object_id = object_id
-        self.object_type = object_type
+            obj_id: int,
+            path: Optional[Tuple] = None,
+            **kwargs,
+    ):
+        super().__init__(**kwargs)
+        self.obj_id = obj_id
         self.path = path
 
     def __repr__(self):
+        s = super().__repr__().replace(')>', '')
         if self.path is not None:
-            return (
-                f'<{type(self).__name__}('
-                f'object_id={self.object_id!r}'
-                f', object_type={self.object_type!r}'
-                f', path={self.path!r}'
-                f')>'
-            )
+            return f'{s}, obj_id={self.obj_id!r}, path={self.path!r})>'
         else:
-            return f'<{type(self).__name__}({self.object_type!r}>'
+            return f'{s}, obj_id={self.obj_id!r})>'
 
     def __eq__(self, other):
-        try:
-            if self.object_type is not other.object_type:
-                return False
-            if self.path is not None:
-                return self.path == other.path
-        except (AttributeError, TypeError):
-            return NotImplemented
-
-
-def _filter_keys(items: Iterator[Tuple[str, Any]], skip_private: bool):
-    for key, value in items:
-        skip = key.startswith('__')
-        skip = skip or (skip_private and key.startswith('_'))
-        skip = skip or litecore.utils.isfunction(value)
-        if not skip:
-            yield key, value
-
-
-def _iter_mapping(obj: Any, skip_private: bool):
-    return obj.items()
-
-
-def _iter_collection(obj: Any, skip_private: bool):
-    return enumerate(obj)
-
-
-def _iter_namedtuple(obj: Any, skip_private: bool):
-    yield from _filter_keys(obj._asdict().items(), skip_private)
-
-
-def _iter_class_items(obj: Any, skip_private: bool):
-    yield from _filter_keys(vars(obj).items(), skip_private)
-    try:
-        slots = (
-            (slot, getattr(obj, slot))
-            for slot in getattr(obj, '__slots__')
-        )
-    except AttributeError:
-        pass
-    else:
-        yield from _filter_keys(slots, skip_private)
+        eq = super().__eq__(other)
+        if eq is not True:
+            return eq
+        if self.path is not None:
+            return self.path == other.path
+        else:
+            return True
 
 
 def _class_attr_factory(obj, path_component, child):
     return ClassAttribute(
-        class_name=type(obj).__qualname__,
+        metadata=ClassMarker.make_metadata_from_object(obj),
         attr=path_component,
     )
 
 
 def _namedtuple_field_factory(obj, path_component, child):
     return NamedTupleField(
-        class_name=type(obj).__qualname__,
+        metadata=ClassMarker.make_metadata_from_object(obj),
+        attr=path_component,
+    )
+
+
+def _dataclass_field_factory(obj, path_component, child):
+    return DataClassField(
+        metadata=ClassMarker.make_metadata_from_object(obj),
         attr=path_component,
     )
 
 
 def _mapping_key_factory(obj, path_component, child):
     return MappingKey(
-        class_name=type(obj).__name__,
+        metadata=ClassMarker.make_metadata_from_object(obj),
         key=path_component,
     )
 
 
 def _sequence_item_factory(obj, path_component, child):
     return SequenceItem(
-        class_name=type(obj).__qualname__,
+        metadata=ClassMarker.make_metadata_from_object(obj),
         index=path_component,
     )
 
 
 def _set_item_factory(obj, path_component, child):
     return SetItem(
-        class_name=type(obj).__qualname__,
+        metadata=ClassMarker.make_metadata_from_object(obj),
         item=path_component,
     )
 
 
-def _get_iterator(
-        obj: Any,
-        *,
-        do_not_iterate: Optional[Tuple[Type, ...]],
-        show_class_attr: bool,
-        show_namedtuple_field: bool,
-        show_dataclass_field: bool,
-        show_mapping_key: bool,
-        show_sequence_item: bool,
-        show_set_item: bool,
-) -> Tuple[Callable, Callable]:
-    if do_not_iterate is not None:
-        do_not_iterate = tuple([str, bytes, bytearray] + list(do_not_iterate))
+_PATH_FACTORIES = {
+    ClassMarkerFlag.MAPPING: _mapping_key_factory,
+    ClassMarkerFlag.SEQUENCE: _sequence_item_factory,
+    ClassMarkerFlag.SET: _set_item_factory,
+    ClassMarkerFlag.NAMED_TUPLE: _namedtuple_field_factory,
+    ClassMarkerFlag.DATA_CLASS: _dataclass_field_factory,
+    ClassMarkerFlag.CLASS: _class_attr_factory,
+}
+
+
+def _get_path_factory(
+        flag: ClassMarkerFlag,
+        class_markers: ClassMarkerFlag,
+) -> Callable:
+    if flag & class_markers:
+        factory = _PATH_FACTORIES.get(flag, None)
     else:
-        do_not_iterate = (str, bytes, bytearray)
-    iterator = None
-    path_factory = None
-    # TODO: handle ASTs?
-    # TODO: handle dataclasses
-    if isinstance(obj, collections.abc.Mapping):
-        iterator = _iter_mapping
-        if show_mapping_key:
-            path_factory = _mapping_key_factory
-    elif hasattr(obj, '_asdict'):
-        iterator = _iter_namedtuple
-        if show_namedtuple_field:
-            path_factory = _namedtuple_field_factory
-    elif hasattr(obj, '__iter__'):
-        if not isinstance(obj, do_not_iterate):
-            iterator = _iter_collection
-            if show_set_item and isinstance(obj, collections.abc.Set):
-                path_factory = _set_item_factory
-            elif show_sequence_item:
-                path_factory = _sequence_item_factory
-    elif hasattr(obj, '__dict__') or hasattr(obj, '__slots__'):
-        iterator = _iter_class_items
-        if show_class_attr:
-            path_factory = _class_attr_factory
-    return iterator, path_factory
+        factory = None
+    return factory
+
+
+def _tupleize_keys(k1, k2) -> Tuple[Hashable, ...]:
+    assert k1 is not None
+    if k1 == ():
+        return (k2,)
+    else:
+        return k1 + (k2,)
 
 
 def flatten(
         obj: Any,
         *,
-        do_not_iterate: Optional[Tuple[Type]] = None,
+        path_reducer: Callable[[Hashable], Hashable] = _tupleize_keys,
+        primitives: Optional[Tuple[Type, ...]] = None,
+        maxlevels: Optional[int] = None,
         skip_private: bool = True,
-        show_class_attr: bool = True,
-        show_namedtuple_field: bool = True,
-        show_dataclass_field: bool = True,
-        show_mapping_key: bool = True,
-        show_set_item: bool = True,
-        show_sequence_item: bool = True,
+        class_markers: ClassMarkerFlag = ClassMarkerFlag.NONE,
         _path=(),
         _memo=None,
+        _level=None,
 ):
     if _memo is None:
         _memo = dict()
-    iterator, path_factory = _get_iterator(
+    if maxlevels is not None:
+        if _level is None:
+            _level = 0
+        elif _level > maxlevels:
+            yield obj
+        else:
+            next_level = _level + 1
+    else:
+        next_level = None
+    flag, items = classify(
         obj,
-        do_not_iterate=do_not_iterate,
-        show_class_attr=show_class_attr,
-        show_namedtuple_field=show_namedtuple_field,
-        show_dataclass_field=show_dataclass_field,
-        show_mapping_key=show_mapping_key,
-        show_set_item=show_set_item,
-        show_sequence_item=show_sequence_item,
+        primitives=primitives,
+        skip_private=skip_private,
     )
-    if iterator is not None:
+    assert flag is not None
+    if flag is not ClassMarkerFlag.NONE:
+        path_factory = _get_path_factory(flag, class_markers)
         if id(obj) not in _memo:
             _memo[id(obj)] = _path
-            for path_component, child in iterator(obj, skip_private):
+            for path_component, child in items:
                 if path_factory is not None:
                     path_component = path_factory(obj, path_component, child)
                 for item in flatten(
                         child,
-                        do_not_iterate=do_not_iterate,
+                        path_reducer=path_reducer,
+                        primitives=primitives,
+                        maxlevels=maxlevels,
                         skip_private=skip_private,
-                        show_class_attr=show_class_attr,
-                        show_namedtuple_field=show_namedtuple_field,
-                        show_dataclass_field=show_dataclass_field,
-                        show_mapping_key=show_mapping_key,
-                        show_set_item=show_set_item,
-                        show_sequence_item=show_sequence_item,
-                        _path=_path + (path_component,),
+                        class_markers=class_markers,
+                        _path=path_reducer(_path, path_component),
                         _memo=_memo,
+                        _level=next_level,
                 ):
                     yield item
             del _memo[id(obj)]
         else:
             yield _path, RecursiveMarker(
-                object_id=id(obj),
-                object_type=type(obj),
+                metadata=ClassMarker.make_metadata_from_object(obj),
+                obj_id=id(obj),
                 path=_memo[id(obj)],
             )
     else:
         yield _path, obj
 
 
-def _process_mapping(
-        obj: Any,
+def recursive_equality(
+        one: Any,
+        other: Any,
         *,
-        _memo,
-        classkey: Optional[str] = None,
-        skip_private: bool,
-):
-    items = {}
-    for key, value in obj.items():
-        skip_key = skip_private and key.startswith('_')
-        skip_key = skip_key or key.startswith('__')
-        skip_value = callable(value)
-        if not skip_key and not skip_value:
-            items[key] = ObjectGraph(
-                value,
-                _memo=_memo,
-                classkey=classkey,
-                skip_private=skip_private,
-            )
-    return items
-
-
-def _process_special(
-        obj: Any,
-        mapping: Mapping,
-        *,
-        _memo,
-        classkey: Optional[str] = None,
-        skip_private: bool,
-):
-    _memo.add(id(obj))
-    items = _process_mapping(
-        mapping,
-        _memo=_memo,
-        classkey=classkey,
+        path_reducer: Callable[[Hashable], Hashable] = _tupleize_keys,
+        primitives: Optional[Tuple[Type, ...]] = None,
+        skip_private: bool = True,
+) -> bool:
+    one_items = flatten(
+        one,
+        path_reducer=path_reducer,
+        primitives=primitives,
         skip_private=skip_private,
     )
-    _memo.remove(id(obj))
-    if classkey is not None and hasattr(obj, '__class__'):
-        items[classkey] = obj.__class__.__name__
-    return items
+    other_items = flatten(
+        other,
+        path_reducer=path_reducer,
+        primitives=primitives,
+        skip_private=skip_private,
+    )
+    return all(x == y for x, y in itertools.zip_longest(
+        one_items,
+        other_items,
+        fillvalue=NO_VALUE,
+    ))
 
 
-class ObjectGraph:
-    def __new__(
-            cls,
-            obj: Any,
-            *,
-            _memo=None,
-            classkey: Optional[str] = '__class__',
-            skip_private: bool = False,
-    ):
-        self = super().__new__(cls)
-        if _memo is None:
-            _memo = set()
-        if id(obj) not in _memo:
-            if isinstance(obj, (str, bytes, bytearray)):
-                self = obj
-            elif isinstance(obj, collections.abc.Mapping):
-                _memo.add(id(obj))
-                self.__dict__ = _process_mapping(
-                    obj,
-                    _memo=_memo,
-                    classkey=classkey,
+def serialize(
+        obj: Any,
+        *,
+        metadata_key: Optional[str] = None,
+        primitives: Optional[Tuple[Type]] = None,
+        skip_private: bool = True,
+        _memo=None,
+) -> Union[List[Any], Dict[Hashable, Any]]:
+    if _memo is None:
+        _memo = set()
+    if id(obj) not in _memo:
+        flag, items = classify(
+            obj,
+            primitives=primitives,
+            skip_private=skip_private,
+        )
+        assert flag is not None
+        if flag & ClassMarkerFlag.SERIALIZED_AS_LIST:
+            _memo.add(id(obj))
+            result = [
+                serialize(
+                    item,
+                    metadata_key=metadata_key,
+                    primitives=primitives,
                     skip_private=skip_private,
-                )
-                _memo.remove(id(obj))
-            elif hasattr(obj, '_ast'):
-                self.__dict__ = _process_special(
-                    obj,
-                    obj._ast(),
                     _memo=_memo,
-                    classkey=classkey,
+                ) for index, item in items
+            ]
+            _memo.remove(id(obj))
+        elif flag & ClassMarkerFlag.SERIALIZED_AS_DICT:
+            _memo.add(id(obj))
+            result = {
+                key: serialize(
+                    value,
+                    metadata_key=metadata_key,
+                    primitives=primitives,
                     skip_private=skip_private,
-                )
-            elif hasattr(obj, '_asdict'):
-                self.__dict__ = _process_special(
-                    obj,
-                    obj._asdict(),
                     _memo=_memo,
-                    classkey=classkey,
-                    skip_private=skip_private,
-                )
-            elif hasattr(obj, '__iter__'):
-                _memo.add(id(obj))
-                self = [
-                    ObjectGraph(
-                        item,
-                        _memo=_memo,
-                        classkey=classkey,
-                        skip_private=skip_private,
-                    ) for item in obj
-                ]
-                _memo.remove(id(obj))
-            elif hasattr(obj, '__dict__'):
-                self.__dict__ = _process_special(
-                    obj,
-                    vars(obj),
-                    _memo=_memo,
-                    classkey=classkey,
-                    skip_private=skip_private,
-                )
-            elif hasattr(obj, '__slots__'):
-                slots = {
-                    slot: getattr(obj, slot)
-                    for slot in getattr(obj, '__slots__')
-                    if not slot.startswith('__')
-                }
-                self.__dict__ = _process_special(
-                    obj,
-                    slots,
-                    _memo=_memo,
-                    classkey=classkey,
-                    skip_private=skip_private,
-                )
-            else:
-                # TODO: log warning?
-                self = obj
+                ) for key, value in items
+            }
+            _memo.remove(id(obj))
+            if flag.is_class and metadata_key is not None:
+                result[metadata_key] = ClassMarker.make_metadata_from_object(obj)
         else:
-            self = RecursiveMarker(obj)
-        return self
-
-    def __repr__(self):
-        return f'{type(self).__name__}({self.__dict__!r})'
-
-    def __eq__(self, other):
-        if not isinstance(other, type(self)):
-            return NotImplemented
-        return self == other
+            result = obj
+    else:
+        result = RecursiveMarker(
+            metadata=ClassMarker.make_metadata_from_object(obj),
+            obj_id=id(obj),
+        )
+    return result

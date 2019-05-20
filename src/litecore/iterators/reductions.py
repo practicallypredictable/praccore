@@ -9,12 +9,13 @@ from typing import (
     Callable,
     Hashable,
     Iterable,
+    List,
     Optional,
     Sequence,
     Tuple,
 )
 
-from litecore.sentinel import NO_VALUE
+from litecore.sentinels import NO_VALUE
 import litecore.iterators.recipes
 
 log = logging.getLogger(__name__)
@@ -57,6 +58,22 @@ def ilen(iterable: Iterable[Any]) -> int:
         counter = itertools.count()
         litecore.iteration.recipes.consume(zip(iterable, counter))
         return next(counter)
+
+
+def iminmax(iterable: Iterable[Any]) -> Tuple[Any, Any]:
+    it = iter(iterable)
+    try:
+        lo = hi = next(it)
+    except StopIteration:
+        raise ValueError('empty iterable')
+    for x, y in itertools.zip_longest(it, it, fillvalue=lo):
+        if x > y:
+            x, y = y, x
+        if x < lo:
+            lo = x
+        if y > hi:
+            hi = y
+    return lo, hi
 
 
 def _argminmax(
@@ -124,6 +141,75 @@ def argmax(
 
     """
     return _argminmax(max, -1, iterable, key=key)
+
+
+def argsort(
+    iterable: Iterable[Any],
+    *,
+    key: Optional[Callable[[Any], Any]] = None,
+    reverse: bool = False,
+) -> List[Hashable]:
+    """Return list of indices corresponding to the sorted items of an iterable.
+
+    Similar to numpy.argsort, except works for general Python data types.
+
+    If iterable is a mapping (i.e., it has an items() attribute), the value
+    of each item will be used for the sort, and the returned index will be the
+    corresponding item keys. Otherwise, the iterable is enumerated and the
+    returned indices are the indices from that enumeration.
+
+    Arguments:
+        iterable: iterator or an iterable collection of items
+
+    Keyword Arguments:
+        key: single-argument callable returning key to be used for sorting items
+            (optional; default of None means act on items without modification)
+        reverse: flag specifying reverse sort order (default is False)
+
+    Returns:
+        list of either hashable keys or integer indices corresponding to the
+        items of iterable in sorted order
+
+    Note:
+        Will not return if passed an infinite iterator.
+
+    Examples:
+
+    >>> items = 'the quick brown fox jumped over the lazy dog'.split()
+    >>> argsort(items)
+    [2, 8, 3, 4, 7, 5, 1, 0, 6]
+    >>> [items[i] for i in argsort(items)] == sorted(items)
+    True
+    >>> argsort(items, reverse=True) == list(reversed(argsort(items)))
+    True
+    >>> import operator
+    >>> last_char = operator.itemgetter(-1)
+    >>> ind_by_last_char = argsort(items, key=last_char)
+    >>> ind_by_last_char
+    [4, 0, 6, 8, 1, 2, 5, 3, 7]
+    >>> [items[i] for i in ind_by_last_char] == sorted(items, key=last_char)
+    True
+    >>> distinct = 'the quick brown fox jumped over a lazy dog'.split()
+    >>> def avg_char(s): return sum(ord(c) for c in s) / len(s)
+    >>> mapping = {s: avg_char(s) for s in distinct}
+    >>> argsort(mapping)
+    ['a', 'dog', 'the', 'jumped', 'quick', 'brown', 'fox', 'over', 'lazy']
+    >>> argsort(mapping) == sorted(distinct, key=avg_char)
+    True
+
+    """
+    try:
+        items = iterable.items()
+    except AttributeError:
+        items = enumerate(iterable)
+    iterator = ((v, k) for k, v in items)
+    if key is None:
+        return [k for v, k in sorted(iterator, reverse=reverse)]
+    else:
+        return [
+            k for v, k
+            in sorted(iterator, key=lambda t: key(t[0]), reverse=reverse)
+        ]
 
 
 def count_true(

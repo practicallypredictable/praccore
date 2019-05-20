@@ -1,4 +1,3 @@
-
 import collections
 import functools
 import itertools
@@ -8,6 +7,7 @@ import operator
 from typing import (
     Any,
     Callable,
+    Collection,
     Iterable,
     Iterator,
     List,
@@ -19,15 +19,46 @@ from typing import (
 )
 
 from litecore.sentinels import NO_VALUE
+import litecore.utils
+import litecore.iterators.exceptions
 
 log = logging.getLogger(__name__)
 
-DO_NOT_FLATTEN = (str, bytes, bytearray)
-"""Native data types which should not be flattened or recursed into."""
 
+def iter_with(context_manager: Iterable[Any]) -> Iterator[Any]:
+    """Wrap an iterable context manager so it closes when consumed.
 
-def iter_with(iterable: Iterable[Any]) -> Iterator[Any]:
-    with iterable:
+    Allows a context manager which is also iterable to be used lazily or
+    asynchronously. Whatever resources are used by the context manager will
+    be released automatically when the iterator is consumed.
+
+    Arguments:
+        context_manager: context manager which is also an iterable
+
+    Yields:
+        each item of the iterable context manager
+
+    Examples:
+
+    >>> import contextlib
+    >>> @contextlib.contextmanager
+    ... def mock_file(name, count):
+    ...    print(f'Opened the file "{name}"')
+    ...    lines = (f'This is line #{i} of "{name}"' for i in range(1, count + 1))
+    ...    try:
+    ...        yield lines
+    ...    finally:
+    ...        print(f'Closed the file "{name}"')
+    >>> for line in iter_with(mock_file('dummy', 3)):
+    ...     print(line)
+    Opened the file "dummy"
+    This is line #1 of "dummy"
+    This is line #2 of "dummy"
+    This is line #3 of "dummy"
+    Closed the file "dummy"
+
+    """
+    with context_manager as iterable:
         for item in iterable:
             yield item
 
@@ -41,10 +72,13 @@ def consume(iterator: Iterator[Any], *, items: Optional[int] = None) -> None:
     iterator will be fully consumed.
 
     Arguments:
-        iterator: object to be acted upon
+        iterator: generic iterator
 
     Keyword Arguments:
         items: number of items to consume (optional; default is None)
+
+    Returns:
+        None
 
     Note:
         Will not return if passed an infinite iterator.
@@ -70,6 +104,51 @@ def consume(iterator: Iterator[Any], *, items: Optional[int] = None) -> None:
         next(itertools.islice(iterator, items, items), None)
 
 
+def only_one(iterable: Iterable[Any]) -> Any:
+    """Consume and return first and only item of an iterable.
+
+    If the iterable has exactly one item, return that item otherwise raise
+    an exception.
+
+    Arguments:
+        iterable: iterator or collection expected to contain only one item
+
+    Returns:
+        single item of iterable
+
+    Raises:
+        IterableTooShortError: if the iterable is empty
+        IterableTooLongError: if the iterable has more than one item
+
+    Examples:
+
+    >>> only_one([])
+    Traceback (most recent call last):
+     ...
+    litecore.iterators.exceptions.IterableTooShortError: empty iterable; expected 1 item
+    >>> only_one(['test'])
+    'test'
+    >>> only_one(['this', 'should', 'fail'])
+    Traceback (most recent call last):
+     ...
+    litecore.iterators.exceptions.IterableTooLongError: expected only 1 item in iterable
+
+    """
+    iterator = iter(iterable)
+    try:
+        value = next(iterator)
+    except StopIteration:
+        msg = f'empty iterable; expected 1 item'
+        raise litecore.iterators.exceptions.IterableTooShortError(msg)
+    try:
+        next(iterator)
+    except StopIteration:
+        return value
+    else:
+        msg = f'expected only 1 item in iterable'
+        raise litecore.iterators.exceptions.IterableTooLongError(msg)
+
+
 def first(
     iterable: Iterable[Any],
     *,
@@ -89,18 +168,17 @@ def first(
     test True will be consumed.
 
     Arguments:
-        iterable: the object with items to be tested
+        iterable: iterator or collection of items to be tested for condition
 
     Keyword Arguments:
-        key: callable defining condition to be tested
+        key: single-argument callable defining condition to be tested
             (optional; default is None)
         default: value to return if the passed iterable is empty, or there is
-            no item for which the condition is True
-            (optional; default is None)
+            no item for which the condition is True (optional; default is None)
 
     Returns:
-        First item of the passed iterable, or, if the iterable is empty or no
-        item matches the condition, the default value
+        first item of the passed iterable meeting the specified condition,
+        otherwise the default value if there is no such item
 
     Examples:
 
@@ -134,138 +212,22 @@ def first(
     return next(iter(items), default)
 
 
-def skip_first(iterable: Iterable[Any]) -> Iterator[Any]:
+def except_first(iterable: Iterable[Any]) -> Iterator[Any]:
     """Return iterator over all the items of an iterable except the first.
 
-    If the iterable is an iterator, it will be fully consumed.
-
     Arguments:
-        iterable: object to be iterated over
+        iterable: iterator or collection of items
 
-    Returns:
-        Iterator of all items in iterable, skipping the first.
+    Yields:
+        each item in iterable after the first
 
     Examples:
 
-    >>> list(skip_first(range(1, 5)))
+    >>> list(except_first(range(1, 5)))
     [2, 3, 4]
 
     """
     return itertools.islice(iterable, 1, None)
-
-
-def take(items: int, iterable: Iterable[Any]) -> List[Any]:
-    """Return a list of the first specified number of items of an iterable.
-
-    If the passed iterable has length less than or equal to the specified
-    number of items, a list having all the items of the iterable will be
-    returned.
-
-    If the iterable is an iterator, the specified number of items of the
-    iterator will be consumed.
-
-    Arguments:
-        items: non-negative number of items to be processed
-        iterable: object to be acted upon
-
-    Returns:
-        List of length min(len(iterable), items)
-
-    Credit to:
-        https://docs.python.org/3/library/itertools.html#itertools-recipes
-
-    Examples:
-
-    >>> take(1, range(5))
-    [0]
-    >>> take(2, range(5))
-    [0, 1]
-    >>> take(0, range(5))
-    []
-    >>> take(6, iter(range(5)))
-    [0, 1, 2, 3, 4]
-
-    """
-    return list(itertools.islice(iterable, items))
-
-
-def take_batches(items: int, iterable: Iterable[Any]) -> Iterator[List[Any]]:
-    """
-
-    >>> list(take_batches(3, range(8)))
-    [[0, 1, 2], [3, 4, 5], [6, 7]]
-    >>> list(take_batches(10, iter(range(8))))
-    [[0, 1, 2, 3, 4, 5, 6, 7]]
-    >>> list(take_batches(3, []))
-    []
-
-    """
-    return iter(functools.partial(take, items, iter(iterable)), [])
-
-
-def take_indices(
-    indices: Sequence[int],
-    iterable: Iterable[Any],
-) -> Iterator[Any]:
-    """
-
-    >>> data = range(10)
-    >>> it = iter(data)
-    >>> take_indices([1, 3, 5], data)
-    [1, 3, 5]
-    >>> take_indices([1, 3, 5], it)
-    [1, 3, 5]
-    >>> list(it)
-    [6, 7, 8, 9]
-    >>> take_indices([1, 11], data)
-    Traceback (most recent call last):
-     ...
-    IndexError: range object index out of range
-
-
-    """
-    try:
-        return [iterable[item] for item in indices]
-    except TypeError:
-        items = take(max(indices) + 1, iterable)
-        return [items[item] for item in indices]
-
-
-def groups_of(
-        items: int,
-        iterable: Iterable[Any],
-        *,
-        fillvalue: Optional[Any] = None,
-) -> Iterator[Tuple[Any, ...]]:
-    """
-
-    >>> list(groups_of(3, 'ABCDEFG', fillvalue=None))
-    [('A', 'B', 'C'), ('D', 'E', 'F'), ('G', None, None)]
-
-    """
-    groups = [iter(iterable)] * items
-    return itertools.zip_longest(*groups, fillvalue=fillvalue)
-
-
-def only_one(
-        iterable: Iterable[Any],
-        *,
-        raise_empty: Optional[BaseException] = None,
-        raise_too_long: Optional[BaseException] = None,
-) -> Any:
-    iterator = iter(iterable)
-    try:
-        value = next(iterator)
-    except StopIteration:
-        raise raise_empty or ValueError(f'Empty iterable')
-    try:
-        next(iterator)
-    except StopIteration:
-        # This is the desired outcome
-        pass
-    else:
-        raise raise_too_long or ValueError(f'More than one item in iterable')
-    return value
 
 
 def nth(
@@ -288,17 +250,17 @@ def nth(
     test True will be consumed.
 
     Arguments:
-        iterable: object to act upon
+        iterable: iterator or collection of items
 
     Keyword Arguments:
-        key: callable defining condition to be tested
+        key: single-argument callable defining condition to be tested
             (optional; default is None)
         default: value to return if the passed iterable is empty, or there is
             no item for which the condition is True
             (optional; default is None)
 
     Returns:
-        Specified item number of the passed iterable, or, if the iterable is
+        specified item number of the passed iterable, or, if the iterable is
         empty or no item matches the condition, the default value
 
     Note:
@@ -334,13 +296,10 @@ def nth(
     """
     items = filter(key, iterable) if key is not None else iterable
     try:
-        # this will be fast for sequences
         return items[item]
     except IndexError:
-        # it's an empty sequence
         return default
     except TypeError:
-        # it's not a sequence
         return next(itertools.islice(items, item, None), default)
 
 
@@ -357,10 +316,10 @@ def tail(items: int, iterable: Iterable[Any]) -> Iterator[Any]:
         iterable: object to be acted upon
 
     Returns:
-        Iterator of the last items in the iterable.
+        iterator of the last items in the iterable
 
     Note:
-        * Will not return if passed an infinite iterator.
+        Will not return if passed an infinite iterator.
 
     Examples;
 
@@ -391,15 +350,15 @@ def last(iterable: Iterable[Any], *, default: Optional[Any] = None) -> Any:
     If the given iterable is an iterator, it will be fully consumed.
 
     Arguments:
-        iterable: object to be acted upon
+        iterable: iterator or collection of items
 
     Keyword Arguments:
         default: value to return if the iterable is emtpy
             (optional; defaults to None)
 
     Returns:
-        Last item in the iterable, or the default value if the iterator is
-        empty.
+        the last item in the iterable, or, if the iteratoris empty,
+        the default value
 
     Note:
         Will not return if passed an infinite iterator.
@@ -433,15 +392,32 @@ def last(iterable: Iterable[Any], *, default: Optional[Any] = None) -> Any:
             return default
 
 
-def butlast(iterable: Iterable[Any]) -> Iterator[Any]:
-    """
+def except_last(iterable: Iterable[Any]) -> Iterator[Any]:
+    """Return iterator over all the items of an iterable except the last.
+
+    Equivalent to iterable[:-1] for a sequence. If the iterable is an iterator,
+    it will be consumed and the last item will be discarded.
+
+    Arguments:
+        iterable: iterator or collection of items
+
+    Yields:
+        each item in iterable other than the last
 
     Examples:
 
-    >>> list(butlast(range(5)))
+    >>> list(except_last(range(5)))
     [0, 1, 2, 3]
-    >>> list(butlast(iter(range(5))))
+    >>> list(except_last([]))
+    []
+    >>> it = except_last(iter(range(5)))
+    >>> list(it)
     [0, 1, 2, 3]
+    >>> next(it)
+    Traceback (most recent call last):
+     ...
+    StopIteration
+
 
     """
     try:
@@ -469,6 +445,44 @@ def unique_with_index(
         *,
         key: Optional[Callable[[Any], Any]] = None,
 ) -> Iterator[Tuple[int, Any]]:
+    """Return iterator of unique items from an iterable, along with item index.
+
+    The items in the iterable may be hashable or unhashable.
+
+    The optional key is a single-argument callable that, if provided, will be
+    called to produce a modified value for each item prior to determining
+    uniqueness. Only items with different keys will compare as different. The
+    default is None, which means that each item is tested for uniqueness
+    without modification.
+
+    Arguments:
+        iterable: iterator or collection of items
+
+    Keyword Arguments:
+        key: single-argument callable mapping function
+            (optional; defaults to None)
+
+    Yields:
+        2-tuples of unique values in the order they were encountered and the
+        index of each item in the passed iterable
+
+    Note:
+        Will not return if passed an infinite iterator.
+
+    >>> list(unique_with_index('AAAABBBCCDAABBB'))
+    [(0, 'A'), (4, 'B'), (7, 'C'), (9, 'D')]
+    >>> list(unique_with_index('ABbcCAD', key=str.lower))
+    [(0, 'A'), (1, 'B'), (3, 'c'), (6, 'D')]
+    >>> list(unique_with_index([]))
+    []
+    >>> list(unique_with_index(range(10), key=type))
+    [(0, 0)]
+    >>> unhashable = [{'value': n, 'even': n % 2 == 0} for n in range(1, 10)]
+    >>> import operator
+    >>> list(unique_with_index(unhashable, key=operator.itemgetter('even')))
+    [(0, {'value': 1, 'even': False}), (1, {'value': 2, 'even': True})]
+
+    """
     hashables_seen = set()
     saw_hashable = hashables_seen.add
     unhashables_seen = []
@@ -501,31 +515,37 @@ def unique(
         *,
         key: Optional[Callable[[Any], Any]] = None,
 ) -> Iterator[Any]:
-    """Return iterator of unique items in an iterable object.
-
-    The optional key is a callable that, if provided, will be called on each
-    item prior to determining uniqueness. Only items with different keys
-    will compare as different. The default is None, which simply operates
-    on each item directly.
+    """Return iterator of unique items from an iterable.
 
     The items in the iterable may be hashable or unhashable.
 
+    The optional key is a single-argument callable that, if provided, will be
+    called to produce a modified value for each item prior to determining
+    uniqueness. Only items with different keys will compare as different. The
+    default is None, which means that each item is tested for uniqueness
+    without modification.
+
     Arguments:
-        iterable: object to be acted upon
+        iterable: iterator or collection of items
 
     Keyword Arguments:
-        key: callable mapping function (optional; defaults to None)
+        key: single-argument callable mapping function
+            (optional; defaults to None)
 
-    Returns:
-        Iterator of unique values in the order they were encountered
+    Yields:
+        each unique value in the iterable in the order it is occurs in the
+        passed iterable
 
     Note:
         Will not return if passed an infinite iterator.
+        Calls unique_with_index() but only yields item values, not indices
+
+    Examples:
 
     >>> list(unique('AAAABBBCCDAABBB'))
     ['A', 'B', 'C', 'D']
-    >>> list(unique('ABBCcAD', key=str.lower))
-    ['A', 'B', 'C', 'D']
+    >>> list(unique('ABbcCAD', key=str.lower))
+    ['A', 'B', 'c', 'D']
     >>> list(unique([]))
     []
     >>> list(unique(range(10), key=type))
@@ -536,16 +556,41 @@ def unique(
     [{'value': 1, 'even': False}, {'value': 2, 'even': True}]
 
     """
-    for i, item in unique_with_index(iterable, key=key):
+    for index, item in unique_with_index(iterable, key=key):
         yield item
 
 
 def argunique(iterable, *, key=None) -> Iterator[int]:
-    """
+    """Return iterator of indices of unique items from an iterable.
+
+    The items in the iterable may be hashable or unhashable.
+
+    The optional key is a single-argument callable that, if provided, will be
+    called to produce a modified value for each item prior to determining
+    uniqueness. Only items with different keys will compare as different. The
+    default is None, which means that each item is tested for uniqueness
+    without modification.
+
+    Arguments:
+        iterable: iterator or collection of items
+
+    Keyword Arguments:
+        key: single-argument callable mapping function
+            (optional; defaults to None)
+
+    Yields:
+        indices of each unique value in the iterable in the order it is
+        occurs in the passed iterable
+
+    Note:
+        Will not return if passed an infinite iterator.
+        Calls unique_with_index() but only yields item indices, not values
+
+    Examples:
 
     >>> list(argunique('AAAABBBCCDAABBB'))
     [0, 4, 7, 9]
-    >>> list(argunique('ABBCcAD', key=str.lower))
+    >>> list(argunique('ABbcCAD', key=str.lower))
     [0, 1, 3, 6]
     >>> list(argunique([]))
     []
@@ -557,8 +602,174 @@ def argunique(iterable, *, key=None) -> Iterator[int]:
     [0, 1]
 
     """
-    for i, item in unique_with_index(iterable, key=key):
-        yield i
+    for index, item in unique_with_index(iterable, key=key):
+        yield index
+
+
+def take(
+        items: int,
+        iterable: Iterable[Any],
+        *,
+        collection_factory: Type[Collection] = list,
+) -> Collection[Any]:
+    """Return a collection of a specified number of items of an iterable.
+
+    The returned collection by default is a list. Other possibilities include
+    tuple, set, collections.OrderedDict.fromkeys, collections.deque or
+    custom-defined collection types.
+
+    The returned collection will be initialized by calling its constructor
+    with and iterable of length min(len(iterable), items)
+
+    If the iterable is an iterator, the specified number of items of the
+    iterator will be consumed.
+
+    Arguments:
+        items: non-negative number of items to be consumed and returned
+        iterable: iterator or collection of items
+
+    Keyword Arguments:
+        collection_factory: type of collection to return (default is list)
+
+    Returns:
+        collection defined by the first items of iterable
+
+    Examples:
+
+    >>> take(1, range(5))
+    [0]
+    >>> take(2, range(5))
+    [0, 1]
+    >>> take(-1, range(5))
+    Traceback (most recent call last):
+     ...
+    ValueError: Stop argument for islice() must be None or an integer: 0 <= x <= sys.maxsize.
+    >>> take(0, range(5), collection_factory=tuple)
+    ()
+    >>> take(6, iter(range(5)), collection_factory=set)
+    {0, 1, 2, 3, 4}
+    >>> take(5, iter(()))
+    []
+
+    """
+    return collection_factory(itertools.islice(iterable, items))
+
+
+def take_specified(
+    iterable: Iterable[Any],
+    *,
+    indices: Collection[int],
+) -> Iterator[Any]:
+    """
+
+    >>> data = list(reversed(range(10)))
+    >>> it = iter(data)
+    >>> take_specified(data, indices=[1, 3, 5])
+    [8, 6, 4]
+    >>> take_specified(it, indices={1, 3, 5})
+    [8, 6, 4]
+    >>> list(it)
+    [3, 2, 1, 0]
+    >>> take_specified(range(1, 11), indices=(1, 3, 5))
+    [2, 4, 6]
+    >>> take_specified(data, indices=(1, 11))
+    Traceback (most recent call last):
+     ...
+    IndexError: list index out of range
+
+    """
+    try:
+        return [iterable[i] for i in indices]
+    except TypeError:
+        items = take(max(indices) + 1, iterable)
+        return [items[i] for i in indices]
+
+
+def take_batches(
+        iterable: Iterable[Any],
+        *,
+        length: int,
+        fillvalue: Optional[Any] = NO_VALUE,
+        collection_factory: Optional[Type[Collection]] = None,
+) -> Iterator[List[Any]]:
+    """Break an iterable into an iterator of collections of specified length.
+
+    The returned collection by default is a tuple. Other possibilities include
+    list, set, collections.OrderedDict.fromkeys, collections.deque or
+    custom-defined collection types.
+
+    If the iterable is of a length not evenly divisible by the batch length,
+    the last list item of the returned iterator will be shorter than the
+    specified length.
+
+    Use this function to break computations on large collections of items
+    into smaller batches.
+
+    Arguments:
+        iterable: iterator or collection of items
+
+    Keyword Arguments:
+        length: non-negative number of items to be consumed and returned
+        collection_factory: type of collection to return
+            (optional; default is None, with the result that returned batches
+            will be of the same type as the original iterable)
+
+    Returns:
+        iterator of collections of specified length (or shorter for the last)
+
+    Examples:
+
+    >>> list(take_batches(range(8), length=3))
+    [range(0, 3), range(3, 6), range(6, 8)]
+    >>> list(take_batches(range(8), length=3, collection_factory=list))
+    [[0, 1, 2], [3, 4, 5], [6, 7]]
+    >>> list(take_batches(list(range(8)), length=3))
+    [[0, 1, 2], [3, 4, 5], [6, 7]]
+    >>> list(take_batches(list(range(8)), length=3, fillvalue='boo!'))
+    [(0, 1, 2), (3, 4, 5), (6, 7, 'boo!')]
+    >>> cycle = [1, 2, 3, 4] * 2
+    >>> list(take_batches(cycle, length=3, fillvalue='boo!', collection_factory=tuple))
+    [(1, 2, 3), (4, 1, 2), (3, 4, 'boo!')]
+    >>> list(take_batches(iter(range(8)), length=3))
+    [(0, 1, 2), (3, 4, 5), (6, 7)]
+    >>> list(take_batches(iter(range(8)), length=10))
+    [(0, 1, 2, 3, 4, 5, 6, 7)]
+    >>> list(take_batches(iter(cycle), length=10, collection_factory=set))
+    [{1, 2, 3, 4}]
+    >>> list(take_batches([], length=3))
+    []
+    >>> list(take_batches('ABCDEFG', length=3, fillvalue=None))
+    [('A', 'B', 'C'), ('D', 'E', 'F'), ('G', None, None)]
+
+    """
+    if fillvalue is not NO_VALUE:
+        groups = [iter(iterable)] * length
+        batches = itertools.zip_longest(*groups, fillvalue=fillvalue)
+    else:
+        _factory = tuple if collection_factory is None else collection_factory
+        empty = _factory()
+        try:
+            iterable[0]
+        except TypeError:
+            batches = iter(
+                functools.partial(
+                    take,
+                    length,
+                    iter(iterable),
+                    collection_factory=_factory,
+                ),
+                empty,
+            )
+        except IndexError:
+            return iter(empty)
+        else:
+            start_indices = itertools.count(0, length)
+            slices = (iterable[i: i + length] for i in start_indices)
+            batches = itertools.takewhile(bool, slices)
+    if collection_factory is not None:
+        return (collection_factory(batch) for batch in batches)
+    else:
+        return batches
 
 
 def drop(items: int, iterable: Iterable[Any]) -> Iterator[Any]:
@@ -587,100 +798,6 @@ def drop(items: int, iterable: Iterable[Any]) -> Iterator[Any]:
 
     """
     return itertools.islice(iterable, items, None)
-
-
-def flatten(iterables: Iterable[Iterable[Any]]) -> Iterator[Any]:
-    """Flatten an iterable of iterables into one consecutive iterator.
-
-    Does not recurse into deeper-level iterables.
-
-    Arguments:
-        iterables: iterable of iterables
-
-    Returns:
-        Iterator of the consecutive items of the underlying iterables.
-
-    Examples:
-
-    >>> list(flatten([range(3), [-1], range(3, 6)]))
-    [0, 1, 2, -1, 3, 4, 5]
-    >>> ' '.join(flatten(['abc', 'def', 'ghi', 'jkl']))
-    'a b c d e f g h i j k l'
-
-    """
-    return itertools.chain.from_iterable(iterables)
-
-
-def flatten_recursive(
-        iterable: Iterable[Any],
-        *,
-        ignore_types: Optional[Sequence[Type]] = None,
-        levels: Optional[int] = None,
-) -> Iterator[Any]:
-    """Recursively flatten an iterable of items into one iterator.
-
-    To avoid hitting the recursion depth limit, ignore_types will always be
-    treated to include str and bytes. These will implicitly be added to
-    whatever sequence is provided by the caller (including None). See the
-    Examples.
-
-    Arguments:
-        items: iterable of items to be flattened
-
-    Keyword Arguments:
-        ignore_types: sequence of types which will not be recursed into;
-            implicitly includes str and bytes, which is also the default
-
-    Returns:
-        Iterator of the consecutive items of the underlying iterables.
-
-    Examples:
-
-    >>> list(flatten_recursive([range(3), [-1], range(3, 6)]))
-    [0, 1, 2, -1, 3, 4, 5]
-    >>> ' '.join(flatten_recursive(['abc', 'def']))
-    'abc def'
-    >>> ' '.join(flatten_recursive(['abc', 'def'], ignore_types=None))
-    'abc def'
-    >>> items = [1, [2, (3, 4, {5: 6}, 7), 8], 9]
-    >>> list(flatten_recursive(items))
-    [1, 2, 3, 4, 5, 7, 8, 9]
-    >>> list(flatten_recursive(items, ignore_types=(tuple, dict)))
-    [1, 2, (3, 4, {5: 6}, 7), 8, 9]
-    >>> names = ['alice', ['bob', ('charlie', 'david', {'edward': 'fiona'})]]
-    >>> list(flatten_recursive(names))
-    ['alice', 'bob', 'charlie', 'david', 'edward']
-    >>> list(flatten_recursive(names, ignore_types=(tuple, dict)))
-    ['alice', 'bob', ('charlie', 'david', {'edward': 'fiona'})]
-
-    """
-    def walk(node, level):
-        stop_level = (levels is not None and level > levels)
-        ignore_type = (
-            (ignore_types is not None and isinstance(node, ignore_types))
-            or isinstance(node, DO_NOT_FLATTEN)  # noqa: W503
-        )
-        if stop_level or ignore_type:
-            yield node
-            return
-        try:
-            children = iter(node)
-        except TypeError:
-            yield node
-            return
-        else:
-            for child in children:
-                for item in walk(child, level + 1):
-                    yield item
-
-    yield from walk(iterable, 0)
-
-
-def flatmap(
-        func: Callable[[Any], Any],
-        iterable: Iterable[Any],
-) -> Iterator[Any]:
-    return itertools.chain.from_iterable(map(func, iterable))
 
 
 def peek(
@@ -914,11 +1031,13 @@ def intersperse(
         raise ValueError(msg)
     elif spacing == 1:
         filler = itertools.repeat(value)
-        return skip_first(round_robin(filler, iterable))
+        return except_first(round_robin(filler, iterable))
     else:
         filler = itertools.repeat([value])
-        batches = take_batches(spacing, iterable)
-        return flatten(skip_first(round_robin(filler, batches)))
+        batches = take_batches(iterable, length=spacing)
+        return itertools.chain.from_iterable(
+            except_first(round_robin(filler, batches))
+        )
 
 
 def partition(
@@ -1302,7 +1421,7 @@ def keep_calling(
         https://docs.python.org/3/library/itertools.html#itertools-recipes
 
     Arguments:
-        func: callable that takes no arguments
+        func: zero-argument callable
 
     Keyword Arguments:
         until_raises: the exception to be detected to break the infinite loop
@@ -1472,21 +1591,3 @@ def groupby_unsorted(
         indexes[key(item)].append(index)
     for key, index_values in indexes.items():
         yield key, (sequence[index] for index in index_values)
-
-
-def argsort(
-    iterable: Iterable[Any],
-    *,
-    key: Optional[Callable[[Any], Any]] = None,
-    reverse: bool = False,
-) -> Sequence[Any]:
-    if isinstance(iterable, collections.abc.Mapping):
-        iterator = ((v, k) for k, v in iterable.items())
-    else:
-        iterator = ((v, k) for k, v in enumerate(iterable))
-    if key is None:
-        indices = [k for v, k in sorted(iterator, reverse=reverse)]
-    else:
-        indices = [k for v, k in sorted(
-            iterator, key=lambda item: item[0], reverse=reverse)]
-    return indices

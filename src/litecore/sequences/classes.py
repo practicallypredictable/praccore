@@ -22,6 +22,13 @@ import litecore.nested
 log = logging.getLogger(__name__)
 
 
+def recursion_safe_list_equality(one: List[Any], other: List[Any]) -> bool:
+    try:
+        return one == other
+    except RecursionError:
+        return litecore.nested.recursive_equality(one, other)
+
+
 class SequenceProxyType(collections.abc.Sequence):
     """A read-only proxy for generic sequences.
 
@@ -188,14 +195,11 @@ class BoundedList(collections.abc.MutableSequence):
             return NotImplemented
         if len(self) != len(other):
             return False
-        if not isinstance(other, list):
-            other_list = list(other)
-        try:
-            return self.data == other_list
-        except RecursionError:
-            flattened_self = list(litecore.nested.flatten(self))
-            flattened_other = list(litecore.nested.flatten(other))
-            return flattened_self == flattened_other
+        if isinstance(other, BoundedList):
+            other_data = other.data
+        else:
+            other_data = list(other)
+        return recursion_safe_list_equality(self.data, other_data)
 
     def insert(self, index: int, value: Any, *, suppress_raise: bool = False):
         room = self.room
@@ -299,9 +303,10 @@ class LazyList(collections.abc.MutableSequence):
         if len(self) != len(other):
             return False
         if isinstance(other, LazyList):
-            return self._cache == other._cache
+            other_data = other._cache
         else:
-            return self._cache == list(other)
+            other_data == list(other)
+        return recursion_safe_list_equality(self._cache, other_data)
 
     def _consume_all(self) -> None:
         self._cache.extend(self._lazy)

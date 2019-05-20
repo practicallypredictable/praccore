@@ -4,6 +4,7 @@ from typing import (
 )
 
 import litecore.iterators.recipes
+import litecore.sequences.classes
 
 
 class CachedIterator:
@@ -71,10 +72,10 @@ class CachedIterator:
     @property
     def cache(self):
         """Return proxy of items in the cache."""
-        return litecore.sequences.SequenceProxyType(self._cache)
+        return litecore.sequences.classes.SequenceProxyType(self._cache)
 
     def seek(self, index: int):
-        """Move the position in the cache to specified index.
+        """Move the position in the cache to the specified index.
 
         If the position is set beyond the current cache size, additional items
         will be consumed from the iterator and stored in the cache.
@@ -83,4 +84,4 @@ class CachedIterator:
         self._index = index
         remainder = index - len(self._cache)
         if remainder > 0:
-            litecore.iteration.recipes.consume(self, items=remainder)
+            litecore.iterators.recipes.consume(self, items=remainder)

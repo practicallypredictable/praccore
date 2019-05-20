@@ -14,7 +14,6 @@ from typing import (
     Any,
     Callable,
     Collection,
-    Hashable,
     Iterator,
     Mapping,
     MutableSequence,
@@ -195,44 +194,6 @@ def left_join(first, *others, default=None):
 def left_join2(left, right, *, default=None):
     for k in left.keys():
         yield (k, (left[k], right.get(k, default)))
-
-
-def _tupleize_keys(k1, k2) -> Tuple[Hashable, ...]:
-    if k1 is None:
-        return (k2,)
-    else:
-        return k1 + (k2,)
-
-
-def flatten(
-        obj: Any,
-        *,
-        key_reducer: Callable[[Hashable], Hashable] = _tupleize_keys,
-        _key=None,
-        _memo=None,
-) -> Iterator[Tuple[Tuple[Hashable, ...], Any]]:
-    if _memo is None:
-        _memo = set()
-    if litecore.check.is_mapping(obj):
-        iterator = obj.items()
-    elif litecore.check.is_iterable_but_do_not_recurse(obj):
-        iterator = enumerate(obj)
-    else:
-        iterator = None
-    if iterator:
-        if id(obj) not in _memo:
-            _memo.add(id(obj))
-            for k, value in iterator:
-                yield from flatten(
-                    value,
-                    key_reducer=key_reducer,
-                    _key=key_reducer(_key, k),
-                    _memo=_memo,
-                )
-            _memo.remove(id(obj))
-        # TODO: warn recursive object?
-    else:
-        yield _key, obj
 
 
 def modify(
