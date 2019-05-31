@@ -27,24 +27,17 @@ such as passing non-iterable objects where an iterable is expected, or non-
 integral arguments where an int is expected, will generally be detected
 by the underlying built-in or itertools function.
 
+Many of the functions in this sub-package will never complete or raise an
+exception if passed an infinite iterator. Take care when using infinite
+iterators.
+
 """
-
-from .cached import (  # noqa: F401
-    CachedIterator,
-)
-
-from .exceptions import (  # noqa: F401
-    IterableTooShortError,
-    IterableTooLongError,
-)
-
 from .recipes import (  # noqa: F401
     iter_with,
-    argsort,
     consume,
     only_one,
     first,
-    except_first,
+    drop,
     nth,
     tail,
     last,
@@ -54,9 +47,9 @@ from .recipes import (  # noqa: F401
     argunique,
     take,
     take_specified,
+    take_while_index,
     take_batches,
     peek,
-    drop,
     prepend,
     pad,
     finite_cycle,
@@ -76,13 +69,18 @@ from .recipes import (  # noqa: F401
     tabulate,
     difference,
     iterate,
+    repeatfunc,
     keep_calling,
     force_reverse,
+    most_recent_run,
+    groupby_unsorted,
+)
+
+from .zipped import (  # noqa: F401
     zip_strict,
     unzip,
     unzip_finite,
-    most_recent_run,
-    groupby_unsorted,
+    unzip_longest_finite,
 )
 
 from .reductions import (  # noqa: F401
@@ -99,6 +97,11 @@ from .reductions import (  # noqa: F401
     all_equal_items_sorted,
     all_equal_items_sequence,
     inner_product,
+    argmax,
+    argmin,
+    argsort,
+    allmax,
+    allmin,
 )
 
 from .flatten import (  # noqa: F401
@@ -107,11 +110,11 @@ from .flatten import (  # noqa: F401
     flatten_deep,
 )
 
-from .pluck import (  # noqa: F401
-    pluck,
-)
-
 from .runlengths import (  # noqa: F401
     Run,
     RunLengths,
+)
+
+from .cached import (  # noqa: F401
+    CachedIterator,
 )

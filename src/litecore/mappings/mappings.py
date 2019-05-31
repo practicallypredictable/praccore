@@ -11,7 +11,6 @@ import itertools
 import logging
 
 from typing import (
-    Any,
     Callable,
     Collection,
     Iterator,
@@ -23,8 +22,7 @@ from typing import (
     Type,
 )
 
-from litecore._types import KT, VT, HVT
-import litecore.check
+from litecore._typing import KT, VT, HVT
 
 log = logging.getLogger(__name__)
 
@@ -194,53 +192,6 @@ def left_join(first, *others, default=None):
 def left_join2(left, right, *, default=None):
     for k in left.keys():
         yield (k, (left[k], right.get(k, default)))
-
-
-def modify(
-        obj: Any,
-        *,
-        modify_key: Callable = lambda x: x,
-        modify_value: Callable = lambda x, original_key: x,
-        mapping_factory: Callable = None,
-        iterable_factory: Callable = None,
-        _memo=None,
-):
-    if _memo is None:
-        _memo = set()
-    if litecore.check.is_mapping(obj):
-        _memo.add(id(obj))
-        factory = type(obj) if mapping_factory is None else mapping_factory
-        new_obj = factory()
-        for key, value in obj.items():
-            new_obj[modify_key(key)] = modify_value(
-                modify(
-                    value,
-                    modify_key=modify_key,
-                    modify_value=modify_value,
-                    mapping_factory=mapping_factory,
-                    iterable_factory=iterable_factory,
-                    _memo=_memo,
-                ),
-                original_key=key,
-            )
-        _memo.remove(id(obj))
-    elif litecore.check.is_iterable_but_do_not_recurse(obj):
-        _memo.add(id(obj))
-        factory = type(obj) if iterable_factory is None else iterable_factory
-        new_obj = factory(
-            modify(
-                value,
-                modify_key=modify_key,
-                modify_value=modify_value,
-                mapping_factory=mapping_factory,
-                iterable_factory=iterable_factory,
-                _memo=_memo,
-            ) for value in obj
-        )
-        _memo.remove(id(obj))
-    else:
-        return obj
-    return new_obj
 
 
 def deep_merge(original, new):

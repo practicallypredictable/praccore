@@ -30,6 +30,5 @@ from .mappings import (  # noqa: F401
     outer_join2,
     left_join,
     left_join2,
-    flatten,
-    modify,
+    deep_merge,
 )

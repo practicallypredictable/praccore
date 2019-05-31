@@ -212,6 +212,42 @@ def argsort(
         ]
 
 
+def allmax(
+        iterable: Iterable[Any],
+        *,
+        key: Optional[Callable] = None,
+) -> List[Any]:
+    result = []
+    max_value = None
+    key = key or (lambda x: x)
+    for item in iterable:
+        value = key(item)
+        if not result or value > max_value:
+            result = [item]
+            max_value = value
+        elif value == max_value:
+            result.append(item)
+    return result
+
+
+def allmin(
+        iterable: Iterable[Any],
+        *,
+        key: Optional[Callable] = None,
+) -> List[Any]:
+    result = []
+    min_value = None
+    key = key or (lambda x: x)
+    for item in iterable:
+        value = key(item)
+        if not result or value < min_value:
+            result = [item]
+            min_value = value
+        elif value == min_value:
+            result.append(item)
+    return result
+
+
 def count_true(
         iterable: Iterable[Any],
         predicate: Callable[[Any], bool] = bool,

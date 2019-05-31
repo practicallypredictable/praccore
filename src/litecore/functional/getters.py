@@ -7,7 +7,7 @@ from litecore import LitecoreError
 import litecore.sentinels
 
 _NO_VALUE = litecore.sentinels.NO_VALUE
-_NO_ITEM_GETTER = litecore.sentinels.create('_NO_ITEMGETTER')
+_NO_ITEM_GETTER = litecore.sentinels.create('_NO_ITEM_GETTER')
 
 
 class GetFieldError(LitecoreError, ValueError):
