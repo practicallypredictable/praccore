@@ -13,7 +13,7 @@ from typing import (
 )
 
 from litecore.sentinels import NO_VALUE as _NO_VALUE
-import litecore.iterators.recipes as lcr
+import litecore.iterators.recipes as lcir
 
 
 def zip_strict(*iterables) -> Iterator[Tuple[Any, ...]]:
@@ -100,7 +100,7 @@ def unzip(
     [0, 1, 2]
 
     """
-    first, iterator = lcr.peek(iter(iterable))
+    first, iterator = lcir.peek(iter(iterable))
     if first is None:
         return ()
     tees = itertools.tee(iterator, len(first))

@@ -62,6 +62,9 @@ class SequenceProxyType(collections.abc.Sequence):
     def __repr__(self):
         return f'{type(self).__name__}({self._sequence!r})'
 
+    def __str__(self):
+        return str(self._sequence)
+
     def __getitem__(self, index_or_slice: Union[int, slice]):
         return self._sequence[index_or_slice]
 

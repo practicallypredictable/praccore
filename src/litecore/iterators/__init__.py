@@ -115,6 +115,8 @@ from .runlengths import (  # noqa: F401
     RunLengths,
 )
 
-from .cached import (  # noqa: F401
+from .classes import (  # noqa: F401
+    IteratorBoundError,
+    BoundedIterator,
     CachedIterator,
 )
