@@ -1,3 +1,6 @@
+"""Classes implementing the iterator protocol.
+
+"""
 import collections.abc
 
 from typing import (
@@ -7,7 +10,7 @@ from typing import (
 )
 
 from litecore import LitecoreError
-import litecore.iterators.recipes as lcir
+import litecore.irecipes.common as _common
 
 
 class IteratorBoundError(LitecoreError, RuntimeError):
@@ -53,7 +56,7 @@ class BoundedIterator(collections.abc.Iterator):
     >>> next(it)
     Traceback (most recent call last):
      ...
-    classes.IteratorBoundError: hit bound of 5 items consumed
+    iterators.IteratorBoundError: hit bound of 5 items consumed
     >>> next(underlying), next(underlying)
     (5, 6)
     >>> it = BoundedIterator(range(8), bound=5, raise_immediately=True)
@@ -64,7 +67,7 @@ class BoundedIterator(collections.abc.Iterator):
     >>> list(it)
     Traceback (most recent call last):
      ...
-    classes.IteratorBoundError: hit bound of 5 items consumed
+    iterators.IteratorBoundError: hit bound of 5 items consumed
 
     """
     def __init__(
@@ -191,4 +194,4 @@ class CachedIterator(collections.abc.Iterator):
         self._index = index
         remainder = index - len(self._cache)
         if remainder > 0:
-            lcir.consume(self, items=remainder)
+            _common.consume(self, items=remainder)

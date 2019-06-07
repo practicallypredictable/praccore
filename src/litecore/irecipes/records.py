@@ -1,12 +1,5 @@
 import collections
 import itertools
-import logging
-
-from typing import (
-    NamedTuple,
-)
-
-log = logging.getLogger(__name__)
 
 # this is for dict of lists/tuples/etc
 

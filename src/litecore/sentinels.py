@@ -30,16 +30,16 @@ class _Sentinel:
 def create(name: str) -> _Sentinel:
     """Create and return a named singleton to serve as a sentinel.
 
+    Make sure to assign the returned object to a module-level name which is the
+    same as the name supplied as the argument to the create() function.
+
+    The returned object always tests as False in boolean operations.
+
     Arguments:
         name: the name of the singleton instance
 
     Returns:
         singleton instance
-
-    Make sure to assign the returned object to a module-level name which is the
-    same as the name supplied as the argument to the create() function.
-
-    The returned object always tests as False in boolean operations.
 
     >>> MISSING = create('MISSING')
     >>> MISSING

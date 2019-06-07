@@ -13,7 +13,7 @@ from typing import (
 )
 
 from litecore.sentinels import NO_VALUE as _NO_VALUE
-import litecore.iterators.recipes as lcir
+import litecore.irecipes.common as _common
 
 
 def zip_strict(*iterables) -> Iterator[Tuple[Any, ...]]:
@@ -44,20 +44,21 @@ def zip_strict(*iterables) -> Iterator[Tuple[Any, ...]]:
 
     """
     for values in itertools.zip_longest(*iterables, fillvalue=_NO_VALUE):
-        if any(v is _NO_VALUE for v in values):
+        if any(value is _NO_VALUE for value in values):
             msg = f'all iterables must have the same length'
             raise ValueError(msg)
         yield values
 
 
-def unzip(
-        iterable: Iterable[Tuple[Any, ...]],
-) -> Tuple[Iterator[Any], ...]:
+def unzip(iterable: Iterable[Tuple[Any, ...]]) -> Tuple[Iterator[Any], ...]:
     """Inverse of built-in zip(), returning separate iterators of tuple items.
 
     Returns tuple of iterators based upon an iterable, each item of which
     is assumed to be a tuple of the same number of items (i.e., of the sort
     created by zip() built-in).
+
+    Assumes that all items of the iterable are a tuple of the same length as
+    the initial item.
 
     The iterable can be infinite (i.e., a zip() of infinite iterators). In that
     case, each returned iterator will also be infinite.
@@ -86,7 +87,7 @@ def unzip(
     >>> inf_letters = itertools.cycle('abcd')
     >>> inf_numbers = itertools.count()
     >>> letters, numbers = unzip(zip(inf_letters, inf_numbers))
-    >>> from litecore.iterators.recipes import take
+    >>> from litecore.irecipes.common import take
     >>> take(6, letters)
     ['a', 'b', 'c', 'd', 'a', 'b']
     >>> take(8, numbers)
@@ -100,11 +101,11 @@ def unzip(
     [0, 1, 2]
 
     """
-    first, iterator = lcir.peek(iter(iterable))
+    first, iterator = _common.peek(iter(iterable))
     if first is None:
         return ()
     tees = itertools.tee(iterator, len(first))
-    return (map(operator.itemgetter(i), t) for i, t in enumerate(tees))
+    return (map(operator.itemgetter(i), tee) for i, tee in enumerate(tees))
 
 
 def unzip_finite(

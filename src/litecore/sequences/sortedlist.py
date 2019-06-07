@@ -2,7 +2,6 @@ import bisect
 import collections
 import itertools
 import operator
-import logging
 
 from typing import (
     Any,
@@ -13,8 +12,6 @@ from typing import (
     Tuple,
     Union,
 )
-
-log = logging.getLogger(__name__)
 
 
 class SortedList(collections.abc.MutableSequence):

@@ -31,49 +31,89 @@ Many of the functions in this sub-package will never complete or raise an
 exception if passed an infinite iterator. Take care when using infinite
 iterators.
 
+There are certain modules which are not automatically imported into the package
+namespace, and which must be specifically imported for use. These are:
+
+    containers: functions which provide some special functionality for mappings
+        and sequences (which have items accessed by subscripting)
+
+    joins: functions for in-memory joins of mappings based upon keys
+
+    records: functions for making records with named fields out of mappings
+
+    computations: functions which only really make sense for iterables of
+        numeric types
+
 """
-from .recipes import (  # noqa: F401
-    iter_with,
+from .common import (  # noqa: F401
+    peek,
     consume,
+    take,
+    drop,
+    pairwise,
+    window,
+    take_batches,
+    keyed_items,
+    flag_where,
+)
+
+from .classes import (  # noqa: F401
+    IteratorBoundError,
+    BoundedIterator,
+    CachedIterator,
+)
+
+from .items import (  # noqa: F401
     only_one,
     first,
-    drop,
     nth,
     tail,
     last,
     except_last,
-    unique_with_index,
+)
+
+from .unique import (  # noqa: F401
+    enumerate_unique,
     unique,
     argunique,
-    take,
-    take_specified,
-    take_while_index,
-    take_batches,
-    peek,
-    prepend,
-    pad,
+    unique_hashable,
+)
+
+from .rotate import (  # noqa: F401
     finite_cycle,
     enumerate_cycle,
     round_robin,
     round_robin_longest,
     rotate_cycle,
     intersperse,
+)
+
+from .modify import (  # noqa: F401
+    prepend,
+    pad,
     partition,
     split,
     take_then_split,
     split_after,
     split_before,
-    window,
-    pairwise,
     replace,
-    tabulate,
-    difference,
-    iterate,
-    repeatfunc,
-    keep_calling,
-    force_reverse,
-    most_recent_run,
-    groupby_unsorted,
+    replace_multi,
+)
+
+from .flatten import (  # noqa: F401
+    flatten,
+    flatmap,
+    deepflatten,
+)
+
+from .grouping import (  # noqa: F401
+    prioritize_in,
+    prioritize_where,
+    unsorted_groupby,
+    sorted_groupby,
+    unique_just_seen,
+    Run,
+    RunLengths,
 )
 
 from .zipped import (  # noqa: F401
@@ -97,26 +137,13 @@ from .reductions import (  # noqa: F401
     all_equal_items_sorted,
     all_equal_items_sequence,
     inner_product,
-    argmax,
-    argmin,
-    argsort,
-    allmax,
-    allmin,
 )
 
-from .flatten import (  # noqa: F401
-    flatten,
-    flatten_map,
-    flatten_deep,
-)
-
-from .runlengths import (  # noqa: F401
-    Run,
-    RunLengths,
-)
-
-from .classes import (  # noqa: F401
-    IteratorBoundError,
-    BoundedIterator,
-    CachedIterator,
+from .misc import (  # noqa: F401
+    force_reverse,
+    iter_with,
+    tabulate,
+    iterate,
+    iter_except,
+    repeatfunc,
 )

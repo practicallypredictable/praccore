@@ -1,5 +1,4 @@
 import itertools
-import logging
 import random
 
 from typing import (
@@ -11,8 +10,6 @@ from typing import (
 )
 
 import litecore.mappings
-
-log = logging.getLogger(__name__)
 
 
 class MultiSet(litecore.mappings.OrderedCounter):

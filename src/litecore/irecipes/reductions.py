@@ -1,7 +1,6 @@
 
 import collections
 import itertools
-import logging
 import operator
 
 from typing import (
@@ -9,31 +8,31 @@ from typing import (
     Callable,
     Hashable,
     Iterable,
-    List,
     Optional,
     Sequence,
     Tuple,
 )
 
-from litecore.sentinels import NO_VALUE
-import litecore.iterators.recipes
-
-log = logging.getLogger(__name__)
+from litecore.sentinels import NO_VALUE as _NO_VALUE
+import litecore.irecipes.common as _common
+from litecore.irecipes.typealiases import FilterFunc
 
 
 def ilen(iterable: Iterable[Any]) -> int:
     """Return the length of an iterable.
 
+    Use this function when it is impractical or wasteful to pull an entire
+    iterator into memory via list() in order to compute the length.
+
     If iterable is an iterator, will consume the entire iterator.
+
+    Will not return if passed an infinite iterator.
 
     Arguments:
         iterable: object for which length is to be computed
 
     Returns:
-        The number of items in the iterable.
-
-    Note:
-        * Will not return if passed an infinite iterator.
+        the number of items in the iterable
 
     Examples:
 
@@ -56,201 +55,88 @@ def ilen(iterable: Iterable[Any]) -> int:
         return len(iterable)
     except TypeError:
         counter = itertools.count()
-        litecore.iteration.recipes.consume(zip(iterable, counter))
+        _common.consume(zip(iterable, counter))
         return next(counter)
 
 
-def iminmax(iterable: Iterable[Any]) -> Tuple[Any, Any]:
-    it = iter(iterable)
-    try:
-        lo = hi = next(it)
-    except StopIteration:
-        raise ValueError('empty iterable')
-    for x, y in itertools.zip_longest(it, it, fillvalue=lo):
-        if x > y:
-            x, y = y, x
-        if x < lo:
-            lo = x
-        if y > hi:
-            hi = y
-    return lo, hi
+def iminmax(
+        iterable: Iterable[Any],
+        *,
+        key: Optional[Callable[[Any], Any]] = None,
+) -> Tuple[Any, Any]:
+    """Return both the min and max items of an iterable.
 
+    The algorithm used here only iterates through the items once. This function
+    is meant to be used in cases where it is expensive to compute the
+    relative item ordering (either in terms of the underlying objects or the
+    key), and both the min and max items are required. Otherwise, just
+    use the built-ins min() and max().
 
-def _argminmax(
-    func: Callable,
-    index: int,
-    iterable: Iterable[Any],
-    *,
-    key: Optional[Callable[[Any], Any]] = None,
-) -> Any:
-    if key is None and isinstance(iterable, collections.abc.Mapping):
-        return func(iterable.items(), key=operator.itemgetter(1))[0]
-    else:
-        try:
-            if key is None:
-                return iterable.index(func(iterable))
-            else:
-                return iterable.index(func(iterable, key=key))
-        except AttributeError:
-            return litecore.iteration.recipes.argsort(iterable, key=key)[index]
+    The optional keyword argument key specifies a callable which will be used
+    to determine the relative ordering of the items.
 
+    If the iterable is an iterator, the entire iterator will be consumed.
 
-def argmin(
-    iterable: Iterable[Any],
-    *,
-    key: Optional[Callable[[Any], Any]] = None,
-) -> Any:
-    """
-
-    Examples:
-
-    >>> argmin('elephant')
-    5
-    >>> argmin([[10, 11], [0, 1, 2], [3, 4, 5, 6]], key=len)
-    0
-    >>> argmin({'a': 1, 'b': 0, 'c': 10})
-    'b'
-    >>> argmin({'a': 1, 'b': 0, 'c': 10, 'd': 'error'})
-    Traceback (most recent call last):
-     ...
-    TypeError: '<' not supported between instances of 'str' and 'int'
-
-    """
-    return _argminmax(min, 0, iterable, key=key)
-
-
-def argmax(
-    iterable: Iterable[Any],
-    *,
-    key: Optional[Callable[[Any], Any]] = None,
-) -> Any:
-    """
-
-    Examples:
-
-    >>> argmax('elephant')
-    7
-    >>> argmax([[10, 11], [0, 1, 2], [3, 4, 5, 6]], key=len)
-    2
-    >>> argmax({'a': 1, 'b': 0, 'c': 10})
-    'c'
-    >>> argmax({'a': 1, 'b': 0, 'c': 10, 'd': 'error'})
-    Traceback (most recent call last):
-     ...
-    TypeError: '>' not supported between instances of 'str' and 'int'
-
-    """
-    return _argminmax(max, -1, iterable, key=key)
-
-
-def argsort(
-    iterable: Iterable[Any],
-    *,
-    key: Optional[Callable[[Any], Any]] = None,
-    reverse: bool = False,
-) -> List[Hashable]:
-    """Return list of indices corresponding to the sorted items of an iterable.
-
-    Similar to numpy.argsort, except works for general Python data types.
-
-    If iterable is a mapping (i.e., it has an items() attribute), the value
-    of each item will be used for the sort, and the returned index will be the
-    corresponding item keys. Otherwise, the iterable is enumerated and the
-    returned indices are the indices from that enumeration.
+    Will not return if passed an infinite iterator.
 
     Arguments:
-        iterable: iterator or an iterable collection of items
+        iterable: object for which min and max items are to be determined
 
     Keyword Arguments:
-        key: single-argument callable returning key to be used for sorting items
-            (optional; default of None means act on items without modification)
-        reverse: flag specifying reverse sort order (default is False)
+        key: single-argument callable which will be applied to each item and
+            the result of which will be used to determine relative ordering
+            of the items (optional; default is None, resulting in the use
+            of each item unmodified)
 
     Returns:
-        list of either hashable keys or integer indices corresponding to the
-        items of iterable in sorted order
+        tuple of the min and max items of iterable
 
-    Note:
-        Will not return if passed an infinite iterator.
+    Raises:
+        ValueError: if an empty iterable is passed
+
+    The examples shown here are purely for illustration and doctest. In
+    practice, just use the built-ins min() and max() for these simple cases.
+
+    A more practical example (outside the scope of this documentation) would
+    be to iterate over a range of complex objects (e.g., simulation results,
+    machine learning model fits, etc.) with a complex fitness criterion.
 
     Examples:
 
-    >>> items = 'the quick brown fox jumped over the lazy dog'.split()
-    >>> argsort(items)
-    [2, 8, 3, 4, 7, 5, 1, 0, 6]
-    >>> [items[i] for i in argsort(items)] == sorted(items)
-    True
-    >>> argsort(items, reverse=True) == list(reversed(argsort(items)))
-    True
-    >>> import operator
-    >>> last_char = operator.itemgetter(-1)
-    >>> ind_by_last_char = argsort(items, key=last_char)
-    >>> ind_by_last_char
-    [4, 0, 6, 8, 1, 2, 5, 3, 7]
-    >>> [items[i] for i in ind_by_last_char] == sorted(items, key=last_char)
-    True
-    >>> distinct = 'the quick brown fox jumped over a lazy dog'.split()
-    >>> def avg_char(s): return sum(ord(c) for c in s) / len(s)
-    >>> mapping = {s: avg_char(s) for s in distinct}
-    >>> argsort(mapping)
-    ['a', 'dog', 'the', 'jumped', 'quick', 'brown', 'fox', 'over', 'lazy']
-    >>> argsort(mapping) == sorted(distinct, key=avg_char)
-    True
+    >>> iminmax(range(8))
+    (0, 7)
+    >>> iminmax('the quick brown fox jumped'.split())
+    ('brown', 'the')
+    >>> iminmax('the quick brown fox jumped'.split(), key=len)
+    ('the', 'jumped')
+    >>> iminmax(['a'])
+    ('a', 'a')
+    >>> iminmax(())
+    Traceback (most recent call last):
+     ...
+    ValueError: empty iterable
 
     """
+    keyed = _common.keyed_items(iterable, key=key)
     try:
-        items = iterable.items()
-    except AttributeError:
-        items = enumerate(iterable)
-    iterator = ((v, k) for k, v in items)
-    if key is None:
-        return [k for v, k in sorted(iterator, reverse=reverse)]
-    else:
-        return [
-            k for v, k
-            in sorted(iterator, key=lambda t: key(t[0]), reverse=reverse)
-        ]
-
-
-def allmax(
-        iterable: Iterable[Any],
-        *,
-        key: Optional[Callable] = None,
-) -> List[Any]:
-    result = []
-    max_value = None
-    key = key or (lambda x: x)
-    for item in iterable:
-        value = key(item)
-        if not result or value > max_value:
-            result = [item]
-            max_value = value
-        elif value == max_value:
-            result.append(item)
-    return result
-
-
-def allmin(
-        iterable: Iterable[Any],
-        *,
-        key: Optional[Callable] = None,
-) -> List[Any]:
-    result = []
-    min_value = None
-    key = key or (lambda x: x)
-    for item in iterable:
-        value = key(item)
-        if not result or value < min_value:
-            result = [item]
-            min_value = value
-        elif value == min_value:
-            result.append(item)
-    return result
+        lo_key, lo = next(keyed)
+    except StopIteration:
+        raise ValueError('empty iterable')
+    hi_key, hi = lo_key, lo
+    contiguous = itertools.zip_longest(keyed, keyed, fillvalue=(lo_key, lo))
+    for (x_key, x), (y_key, y) in contiguous:
+        if x_key > y_key:
+            x_key, x, y_key, y = y_key, y, x_key, x
+        if x_key < lo_key:
+            lo_key, lo = x_key, x
+        if y_key > hi_key:
+            hi_key, hi = y_key, y
+    return lo, hi
 
 
 def count_true(
         iterable: Iterable[Any],
-        predicate: Callable[[Any], bool] = bool,
+        predicate: FilterFunc = bool,
 ) -> int:
     """
 
@@ -270,7 +156,7 @@ def _consecutive_pairs(iterable: Iterable[Any], op: Callable) -> bool:
     # Helper function for the sequence comparisons below
     return all(
         op(left, right)
-        for left, right in litecore.iteration.recipes.pairwise(iterable)
+        for left, right in _common.pairwise(iterable)
     )
 
 
@@ -750,7 +636,7 @@ def same_ordered_items(*iterables: Tuple[Iterable[Any]]) -> bool:
     if len(iterables) < 2:
         msg = f'Got {len(iterables)} iterables; must provide at least 2'
         raise ValueError(msg)
-    zipped_items = itertools.zip_longest(*iterables, fillvalue=NO_VALUE)
+    zipped_items = itertools.zip_longest(*iterables, fillvalue=_NO_VALUE)
     return all(all_equal_items_sequence(item) for item in zipped_items)
 
 
@@ -761,8 +647,6 @@ def inner_product(
     operation: Callable[[Any, Any], Any] = operator.mul,
     mapping: Callable = map,
     reduction: Callable[[Iterable[Any]], Any] = sum,
-
-
 ) -> Any:
     """
 
