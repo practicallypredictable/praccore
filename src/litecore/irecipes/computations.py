@@ -2,8 +2,10 @@ from typing import (
     Any,
     Iterable,
     Iterator,
+    Optional,
 )
 
+from litecore.sentinels import NO_VALUE as _NO_VALUE
 import litecore.irecipes.common as _common
 
 
@@ -26,10 +28,14 @@ def difference(iterable: Iterable[Any]) -> Iterator[Any]:
     [2, 2, 2, 2, 2, 2, 2, 2]
 
     """
-    return (x[1] - x[0] for x in _common.pairwise(iterable))
+    return (x2 - x1 for x1, x2 in _common.pairwise(iterable))
 
 
-def proportional_change(iterable: Iterable[Any]) -> Iterator[Any]:
+def proportional_change(
+        iterable: Iterable[Any],
+        *,
+        zero_divide_value: Optional[Any] = _NO_VALUE,
+) -> Iterator[Any]:
     """Return proportional changes of the items of an iterable.
 
     Assumes the subtraction and division operators makes sense for each item of
@@ -46,10 +52,21 @@ def proportional_change(iterable: Iterable[Any]) -> Iterator[Any]:
     Returns:
         iterator of the proportional changes
 
-    >>> [round(p, 3) for p in proportional_changes(range(1, 10))]
+    >>> [round(p, 3) for p in proportional_change(range(1, 10))]
     [1.0, 0.5, 0.333, 0.25, 0.2, 0.167, 0.143, 0.125]
-    >>> [round(p, 3) for p in proportional_changes([x * x for x in range(1, 10)])]
-    [3.0, 1.25, 0.778, 0.562, 0.44, 0.361, 0.306, 0.266]
+    >>> [round(p, 3) for p in proportional_change(range(0, 10))]
+    Traceback (most recent call last):
+     ...
+    ZeroDivisionError: division by zero
+    >>> [round(p, 3) for p in proportional_change(range(0, 10), zero_divide_value=float('NaN'))]
+    [nan, 1.0, 0.5, 0.333, 0.25, 0.2, 0.167, 0.143, 0.125]
 
     """
-    return ((x[1] - x[0]) / x[0] for x in _common.pairwise(iterable))
+    for x1, x2 in _common.pairwise(iterable):
+        try:
+            yield (x2 - x1) / x1
+        except ZeroDivisionError:
+            if zero_divide_value is not _NO_VALUE:
+                yield zero_divide_value
+            else:
+                raise
