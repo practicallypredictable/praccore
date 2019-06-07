@@ -109,8 +109,8 @@ from .flatten import (  # noqa: F401
 from .grouping import (  # noqa: F401
     prioritize_in,
     prioritize_where,
-    unsorted_groupby,
-    sorted_groupby,
+    groupby_unsorted,
+    groupby_sorted,
     unique_just_seen,
     Run,
     RunLengths,

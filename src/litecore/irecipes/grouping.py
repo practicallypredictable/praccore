@@ -100,7 +100,7 @@ def prioritize_where(condition: FilterFunc) -> Prioritizer:
     return functools.partial(_predicate_true, condition=condition)
 
 
-def unsorted_groupby(
+def groupby_unsorted(
         iterable: Iterable[Any],
         *,
         key: Optional[HashableKeyFunc] = None,
@@ -113,7 +113,7 @@ def unsorted_groupby(
     value for grouping each item.
 
     For non-hashable items, sort and use the usual itertools.groupby() or the
-    sorted_groupby() recipe herein.
+    groupby_sorted() recipe herein.
 
     Note this function will consume an entire iterator into a dict of lists,
     so be mindful of memory usage for long iterators. Will not return for an
@@ -136,7 +136,7 @@ def unsorted_groupby(
 
     >>> word = 'supercalifragilisticexpialidocious'
     >>> is_vowel = lambda c: c.lower() in 'aeiou'
-    >>> list(unsorted_groupby(word, key=is_vowel))[0]  # doctest: +ELLIPSIS
+    >>> list(groupby_unsorted(word, key=is_vowel))[0]  # doctest: +ELLIPSIS
     (False, ['s', 'p', 'r', 'c', 'l', 'f', 'r', 'g', 'l', 's', ..., 's'])
 
     """
@@ -147,7 +147,7 @@ def unsorted_groupby(
     return groups.items()
 
 
-def sorted_groupby(
+def groupby_sorted(
         iterable: Iterable[Any],
         *,
         key: Optional[KeyFunc] = None,
@@ -158,7 +158,7 @@ def sorted_groupby(
     from the Python standard library itertools recipes. See:
         https://docs.python.org/3/library/itertools.html#itertools.groupby
 
-    For hashable items, consider using the unsorted_groupby() recipe herein.
+    For hashable items, consider using the groupby_unsorted() recipe herein.
 
     Note the sort done by this function will consume an entire iterator into a
     list, which will then be copied (i.e., there will be two lists of similar
@@ -182,7 +182,7 @@ def sorted_groupby(
 
     >>> word = 'supercalifragilisticexpialidocious'
     >>> is_vowel = lambda c: c.lower() in 'aeiou'
-    >>> list(sorted_groupby(word, key=is_vowel))[0]  # doctest: +ELLIPSIS
+    >>> list(groupby_sorted(word, key=is_vowel))[0]  # doctest: +ELLIPSIS
     (False, ['s', 'p', 'r', 'c', 'l', 'f', 'r', 'g', 'l', 's', ..., 's'])
 
     """
