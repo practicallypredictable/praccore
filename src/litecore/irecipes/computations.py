@@ -29,7 +29,7 @@ def difference(iterable: Iterable[Any]) -> Iterator[Any]:
     return (x[1] - x[0] for x in _common.pairwise(iterable))
 
 
-def proportional_changes(iterable: Iterable[Any]) -> Iterator[Any]:
+def proportional_change(iterable: Iterable[Any]) -> Iterator[Any]:
     """Return proportional changes of the items of an iterable.
 
     Assumes the subtraction and division operators makes sense for each item of
