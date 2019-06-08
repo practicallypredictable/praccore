@@ -57,13 +57,7 @@ from .common import (  # noqa: F401
     flag_where,
 )
 
-from .classes import (  # noqa: F401
-    IteratorBoundError,
-    BoundedIterator,
-    CachedIterator,
-)
-
-from .items import (  # noqa: F401
+from .select import (  # noqa: F401
     only_one,
     first,
     nth,
@@ -106,7 +100,7 @@ from .flatten import (  # noqa: F401
     deepflatten,
 )
 
-from .grouping import (  # noqa: F401
+from .group import (  # noqa: F401
     prioritize_in,
     prioritize_where,
     groupby_unsorted,
@@ -126,17 +120,17 @@ from .zipped import (  # noqa: F401
 from .reductions import (  # noqa: F401
     ilen,
     iminmax,
+    count_where,
+    allpairs,
     decreasing,
     increasing,
-    non_decreasing,
-    non_increasing,
-    same_items,
-    same_items_unhashable,
-    same_ordered_items,
-    all_distinct_items,
-    all_equal_items_sorted,
-    all_equal_items_sequence,
-    inner_product,
+    nondecreasing,
+    nonincreasing,
+    allunique,
+    allunique_hashable,
+    allequal,
+    allequal_sequence,
+    allequal_sorted,
 )
 
 from .misc import (  # noqa: F401
@@ -146,4 +140,10 @@ from .misc import (  # noqa: F401
     iterate,
     iter_except,
     repeatfunc,
+)
+
+from .classes import (  # noqa: F401
+    IteratorBoundError,
+    BoundedIterator,
+    CachedIterator,
 )

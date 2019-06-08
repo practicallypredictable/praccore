@@ -1,5 +1,8 @@
+import operator
+
 from typing import (
     Any,
+    Callable,
     Iterable,
     Iterator,
     Optional,
@@ -7,6 +10,32 @@ from typing import (
 
 from litecore.sentinels import NO_VALUE as _NO_VALUE
 import litecore.irecipes.common as _common
+
+
+def inner_product(
+    left: Iterable[Any],
+    right: Iterable[Any],
+    *,
+    operation: Callable[[Any, Any], Any] = operator.mul,
+    mapping: Callable = map,
+    reduction: Callable[[Iterable[Any]], Any] = sum,
+) -> Any:
+    """
+
+    >>> inner_product(range(1, 5), range(1, 5)) == 1 + 4 + 9 + 16
+    True
+    >>> c1 = [complex(1, -1), complex(3, 5)]
+    >>> c2 = [complex(2, 2), complex(-3, 1)]
+    >>> inner_product(c1, c2)
+    (-10-12j)
+    >>> animals = ['alpaca', 'cat', 'dog', 'frog', 'zebra']
+    >>> foods = ['avocado', 'banana', 'doughnuts', 'fries', 'goulash']
+    >>> def start_same(s1, s2): return s1.lower()[0] == s2.lower()[0]
+    >>> inner_product(animals, foods, operation=start_same)
+    3
+
+    """
+    return reduction(mapping(operation, left, right))
 
 
 def difference(iterable: Iterable[Any]) -> Iterator[Any]:

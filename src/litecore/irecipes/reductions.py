@@ -1,5 +1,3 @@
-
-import collections
 import itertools
 import operator
 
@@ -13,9 +11,8 @@ from typing import (
     Tuple,
 )
 
-from litecore.sentinels import NO_VALUE as _NO_VALUE
 import litecore.irecipes.common as _common
-from litecore.irecipes.typealiases import FilterFunc
+from litecore.irecipes.typealiases import FilterFunc, KeyFunc
 
 
 def ilen(iterable: Iterable[Any]) -> int:
@@ -134,26 +131,54 @@ def iminmax(
     return lo, hi
 
 
-def count_true(
+def count_where(
         iterable: Iterable[Any],
         predicate: FilterFunc = bool,
 ) -> int:
-    """
+    """Count how many times the predicate is True for items of iterable.
+
+    Same as quantify() from the standard library itertools recipes. See:
+        https://docs.python.org/3/library/itertools.html#itertools-recipes
+
+    Arguments:
+        iterable: object with items to be checked
+        predicate: single-argument callable returning a boolean value
+
+    Returns:
+        number of times the predicate tests True for the items of the iterable
 
     Examples:
 
-    >>> count_true(range(10), lambda n: n % 2 == 0)
+    >>> count_where(range(10), lambda n: n % 2 == 0)
     5
     >>> data = [1, 2, 3, 'a', 'b', 'c', len, str, int, 'd', 4]
-    >>> count_true(data, lambda x: type(x) is str)
+    >>> count_where(data, lambda x: type(x) is str)
     4
 
     """
     return sum(map(predicate, iterable))
 
 
-def _consecutive_pairs(iterable: Iterable[Any], op: Callable) -> bool:
-    # Helper function for the sequence comparisons below
+def allpairs(
+        iterable: Iterable[Any],
+        op: Callable[[Any, Any], bool],
+) -> bool:
+    """Returns True if all consecutive pairs of an iterable satify a condition.
+
+    Arguments:
+        iterable: object to be checked
+        op: two-argument callable returning a boolean value
+
+    Returns:
+        True if every consecutive pair of items of the iterable satisfy the
+        specified condition
+
+    Examples:
+
+    >>> allpairs(range(10), lambda x1, x2: x2 - x1 == 1)
+    True
+
+    """
     return all(
         op(left, right)
         for left, right in _common.pairwise(iterable)
@@ -169,7 +194,7 @@ def decreasing(iterable: Iterable[Any]) -> bool:
         iterable: object to be checked
 
     Returns:
-        True if the iterable is strictly decreasing, otherwise False.
+        True if the iterable is strictly decreasing, otherwise False
 
     Examples:
 
@@ -179,7 +204,7 @@ def decreasing(iterable: Iterable[Any]) -> bool:
     True
 
     """
-    return _consecutive_pairs(iterable, operator.gt)
+    return allpairs(iterable, operator.gt)
 
 
 def increasing(iterable: Iterable[Any]) -> bool:
@@ -191,7 +216,7 @@ def increasing(iterable: Iterable[Any]) -> bool:
         iterable: object to be checked
 
     Returns:
-        True if the iterable is strictly increasing, otherwise False.
+        True if the iterable is strictly increasing, otherwise False
 
     Examples:
 
@@ -201,10 +226,10 @@ def increasing(iterable: Iterable[Any]) -> bool:
     False
 
     """
-    return _consecutive_pairs(iterable, operator.lt)
+    return allpairs(iterable, operator.lt)
 
 
-def non_decreasing(iterable: Iterable[Any]) -> bool:
+def nondecreasing(iterable: Iterable[Any]) -> bool:
     """Returns True if the iterable is non-decreasing.
 
     Every item of the iterable must have rich comparisons defined between them.
@@ -213,22 +238,22 @@ def non_decreasing(iterable: Iterable[Any]) -> bool:
         iterable: object to be checked
 
     Returns:
-        True if the iterable is non-decreasing, otherwise False.
+        True if the iterable is non-decreasing, otherwise False
 
     Examples:
 
-    >>> non_decreasing(range(10))
+    >>> nondecreasing(range(10))
     True
-    >>> non_decreasing([0, 0, 1, 1, 2, 2, 3, 4])
+    >>> nondecreasing([0, 0, 1, 1, 2, 2, 3, 4])
     True
-    >>> non_decreasing([0, 0, 1, 1, 2, 2, 5, 4])
+    >>> nondecreasing([0, 0, 1, 1, 2, 2, 5, 4])
     False
 
     """
-    return _consecutive_pairs(iterable, operator.le)
+    return allpairs(iterable, operator.le)
 
 
-def non_increasing(iterable: Iterable[Any]) -> bool:
+def nonincreasing(iterable: Iterable[Any]) -> bool:
     """Returns True if the iterable is non-increasing.
 
     Every item of the iterable must have rich comparisons defined between them.
@@ -237,22 +262,22 @@ def non_increasing(iterable: Iterable[Any]) -> bool:
         iterable: object to be checked
 
     Returns:
-        True if the iterable is non-increasing, otherwise False.
+        True if the iterable is non-increasing, otherwise False
 
     Examples:
 
-    >>> non_increasing(reversed(range(10)))
+    >>> nonincreasing(reversed(range(10)))
     True
-    >>> non_increasing([5, 5, 4, 3, 2, 2, 1, 0])
+    >>> nonincreasing([5, 5, 4, 3, 2, 2, 1, 0])
     True
-    >>> non_increasing([5, 5, 4, 3, 2, 3, 1, 0])
+    >>> nonincreasing([5, 5, 4, 3, 2, 3, 1, 0])
     False
 
     """
-    return _consecutive_pairs(iterable, operator.ge)
+    return allpairs(iterable, operator.ge)
 
 
-def all_equal_items(
+def allequal(
         iterable: Iterable[Any],
         *,
         eq: Optional[Callable[[Any, Any], bool]] = None,
@@ -261,7 +286,13 @@ def all_equal_items(
 
     The eq keyword argument, if provided, should specify a two-argument
     callable returning a boolean value representing equality. The default value
-    of None correponds to the usual equality operator.
+    of None corresponds to the usual equality operator.
+
+    Returns True for an empty iterable. Will not return if passed an infinite
+    iterator.
+
+    See allequal_sequence() for a function specialized for built-in
+    sequences such as lists and tuples.
 
     Arguments:
         iterable: object to be checked
@@ -271,73 +302,69 @@ def all_equal_items(
 
     Returns:
         True if all items of iterable are the same (as defined by the equality
-        keyword argument, if specified), otherwise False.
-
-    Note:
-        * Returns True for an empty iterable.
-        * See all_equal_items_sequence() for a function specialized for
-          built-in sequences such as lists and tuples.
-        * Will not return if passed an infinite iterator.
+        keyword argument, if specified), otherwise False
 
     Examples:
 
-    >>> all_equal_items([1] * 5)
+    >>> allequal([1] * 5)
     True
-    >>> all_equal_items([])
+    >>> allequal([])
     True
-    >>> all_equal_items(range(5))
+    >>> allequal(range(5))
     False
     >>> iterable = iter([0, 1, 1, 1])
     >>> next(iterable)
     0
-    >>> all_equal_items(iterable)
+    >>> allequal(iterable)
     True
-    >>> all_equal_items([2, 4, 6, 8], eq=lambda a, b: a % 2 == b % 2)
+    >>> allequal([2, 4, 6, 8], eq=lambda a, b: a % 2 == b % 2)
     True
 
     """
     it = iter(iterable)
-    if eq is None:
-        eq = operator.eq
     try:
         first = next(it)
     except StopIteration:
         return True
-    return all(eq(first, item) for item in it)
+    if eq is None:
+        return all(item == first for item in it)
+    else:
+        return all(eq(first, item) for item in it)
 
 
-def all_equal_items_sequence(sequence: Sequence[Any]) -> bool:
+def allequal_sequence(sequence: Sequence[Any]) -> bool:
     """Check whether all items of a sequence are equal.
 
-    This is an optimized form of all_equal_items() below, which should be
-    faster for built-in sequences such as lists. Although it will work for any
+    This is an optimized form of allequal(), which should be faster for
+    built-in sequences such as lists and tuples. Although it will work for any
     container implementing the interface of collections.abc.Sequence (see
     https://docs.python.org/3/library/collections.abc.html), the function
-    all_equal_items_sorted() function should be faster on already-sorted
-    iterables. The general all_equal_items() function may also be faster on
+    allequal_sorted() should be faster on already-sorted general iterables.
+    The general allequal() function may also be faster on
     user-defined iterable classes.
+
+    Relies on the passed sequence having a count() method defined.
+
+    Returns True for an empty sequence. Will not return if passed an infinite
+    iterator.
 
     Arguments:
         sequence: object to be checked
 
     Returns:
-        True if all items of sequence are the same, otherwise False.
-
-    Note:
-        * Returns True for an empty sequence.
-        * Will not return if passed an infinite iterator.
+        True if all items of sequence are the same, otherwise False
 
     Examples:
 
-    >>> all_equal_items_sequence([1] * 1000)
+    >>> allequal_sequence([1] * 1000)
     True
-    >>> all_equal_items_sequence([1] * 999 + [2])
+    >>> allequal_sequence([1] * 999 + [2])
     False
-    >>> all_equal_items_sequence([set([3])] * 100)
+    >>> allequal_sequence([set([3])] * 100)
     True
-    >>> all_equal_items_sequence([set([3])] * 99 + [set([4])])
+    >>> allequal_sequence([set([3])] * 99 + [set([4])])
     False
-    >>> all_equal_items_sequence([])
+    >>> allequal_sequence([])
     True
 
     """
@@ -347,19 +374,25 @@ def all_equal_items_sequence(sequence: Sequence[Any]) -> bool:
         return True
 
 
-def all_equal_items_sorted(
+def allequal_sorted(
         iterable: Iterable[Any],
         *,
-        key: Optional[Callable[[Any], Any]] = None,
+        key: Optional[KeyFunc] = None,
 ) -> bool:
     """Check whether all items of a sorted iterable are the same.
 
-    Note this function uses itertools.groupby, which assumes the iterable
+    Note this function uses itertools.groupby(), which assumes the iterable
     is sorted by some key in order to work as expected. Whichever key function
     was used to sort the iterable should also be provided to this function
     via the optional key keyword argument. The key argument defaults to None,
     which is appropriate when the iterable was sorted wihtout using a custom
     key.
+
+    See allequal_sequence() for a function specialized for built-in sequences
+    such as lists and tuples.
+
+    Returns True for an empty iterable. Will not return if passed an infinite
+    iterator.
 
     Arguments:
         iterable: object to be checked
@@ -369,25 +402,19 @@ def all_equal_items_sorted(
 
     Returns:
         True if all items of iterable are the same (as defined by the sort key,
-        if specified), otherwise False.
-
-    Note:
-        * Returns True for an empty iterable.
-        * See all_equal_items_sequence() for a function specialized for
-          built-in sequences such as lists and tuples.
-        * Will not return if passed an infinite iterator.
+        if specified), otherwise False
 
     Examples:
 
-    >>> all_equal_items_sorted([1] * 1000)
+    >>> allequal_sorted([1] * 1000)
     True
-    >>> all_equal_items_sorted([1] * 999 + [2])
+    >>> allequal_sorted([1] * 999 + [2])
     False
-    >>> all_equal_items_sorted([set([3])] * 100)
+    >>> allequal_sorted([set([3])] * 100)
     True
-    >>> all_equal_items_sorted([set([3])] * 99 + [set([4])])
+    >>> allequal_sorted([set([3])] * 99 + [set([4])])
     False
-    >>> all_equal_items_sorted([])
+    >>> allequal_sorted([])
     True
 
     """
@@ -395,272 +422,79 @@ def all_equal_items_sorted(
     return next(groups, True) and not next(groups, False)
 
 
-def all_distinct_items(iterable: Iterable[Any]) -> bool:
+def allunique(iterable: Iterable[Any]) -> bool:
     """Check whether all items of an iterable are distinct.
+
+    Works for either hashable or unhashable items. If all items are hashable,
+    allunique_hashable() will be much faster.
+
+    Returns True for an empty iterable. Will not return if passed an infinite
+    iterator.
 
     Arguments:
         iterable: object to be checked
 
     Returns:
-        True if all items of iterable are different, otherwise False.
-
-    Note:
-        * Returns True for an empty iterable.
-        * Will not return if passed an infinite iterator.
+        True if all items of iterable are different, otherwise False
 
     Examples:
 
-    >>> all_distinct_items(range(1_000_000))
+    >>> allunique(range(100))
     True
-    >>> all_distinct_items(iter(range(10_000)))
+    >>> allunique(iter(range(100)))
     True
-    >>> all_distinct_items(list(range(10_000)) + [9])
+    >>> allunique(list(range(100)) + [9])
     False
-    >>> all_distinct_items(['alice', 'bob', 'charlie'])
+    >>> allunique(['alice', 'bob', 'charlie'])
     True
-    >>> all_distinct_items('hi ho')
+    >>> allunique('hi ho')
     False
-    >>> all_distinct_items([])
+    >>> allunique([['this', 'object'], ['is'], ['not', 'hashable']])
+    True
+    >>> allunique([])
     True
 
     """
-    n = None
-    try:
-        n = len(iterable)
-    except TypeError:
-        pass
-    if n is not None and n < 100_000:  # TODO: optimize this
-        return n == len(set(iterable))
-    else:
-        hashables_seen = set()
-        saw_hashable = hashables_seen.add  # optimization
-        unhashables_seen = []
-        saw_unhashable = unhashables_seen.append  # optimization
-        for item in iterable:
-            try:
-                if item in hashables_seen:
-                    return False
-                else:
-                    saw_hashable(item)
-            except TypeError:
-                if item in unhashables_seen:
-                    return False
-                else:
-                    saw_unhashable(item)
-        return True
+    seen = []
+    saw = seen.append
+    return not any(item in seen or saw(item) for item in iterable)
 
 
-def same_items_unhashable(*iterables: Tuple[Iterable[Any]]) -> bool:
-    """Check whether passed iterables contain the same (unordered) items.
+def allunique_hashable(iterable: Iterable[Hashable]) -> bool:
+    """Check whether all items of an iterable are distinct.
 
-    The iterables can be of different types, only the underlying items are
-    compared for equality. The underlying items do not need to be hashable.
+    Only works for hashable items. If at least one item is unhashable,
+    use allunique().
 
-    However, the algorithm reuqired for general unhashable items is quite slow.
-    For situations where the items are known to be hashable, use same_items().
-
-    The order of the items in each underlying iterable (if applicable), is
-    ignored. For ordered comparison, see the function same_ordered_items().
+    Returns True for an empty iterable. Will not return if passed an infinite
+    iterator.
 
     Arguments:
-        tuple of iterables: objects to be compared; must have at least 2 items
+        iterable: object to be checked
 
     Returns:
-        Boolean whether the iterables all contain same items, irrespective of
-        the order of their items.
-
-    Raises:
-        ValueError: if less than 2 iterables are passed as positional arguments
-
-    Note:
-        * Any iterators passed as arguments will be consumed.
-        * Will not return if passed an infinite iterator.
+        True if all items of iterable are different, otherwise False
 
     Examples:
 
-    >>> items = [(i, i+1) for i in range(10)]
-    >>> import random
-    >>> shuffled = items[:]
-    >>> random.shuffle(shuffled)
-    >>> different = items[:-1] + [None]
-    >>> longer = items + [None]
-    >>> set_items = [set(item) for item in items]
-    >>> shuffled_set_items = set_items.copy()
-    >>> items_it = iter(set_items)
-    >>> shuffled_items_it = iter(shuffled_set_items)
-    >>> random.shuffle(shuffled_set_items)
-    >>> same_items_unhashable(items, set(items))
+    >>> allunique_hashable(range(100))
     True
-    >>> same_items_unhashable(items_it, shuffled_items_it)
+    >>> allunique_hashable(iter(range(100)))
     True
-    >>> same_items_unhashable(items, reversed(items))
-    True
-    >>> same_items_unhashable(items, reversed(items), shuffled)
-    True
-    >>> same_items_unhashable(items, shuffled, different)
+    >>> allunique_hashable(list(range(100)) + [9])
     False
-    >>> same_items_unhashable(items, shuffled, longer)
+    >>> allunique_hashable(['alice', 'bob', 'charlie'])
+    True
+    >>> allunique_hashable('hi ho')
     False
-    >>> same_items_unhashable(set_items, set_items)
-    True
-    >>> same_items_unhashable(set_items, shuffled_set_items)
-    True
-
-    """
-    if len(iterables) < 2:
-        msg = f'Got {len(iterables)} iterables; must provide at least 2'
-        raise ValueError(msg)
-    reference = list(iterables[0])
-    for test in iterables[1:]:
-        unmatched = reference[:]
-        for item in test:
-            try:
-                unmatched.remove(item)
-            except ValueError:
-                return False
-        if unmatched:
-            return False
-    return True
-
-
-def same_items(*iterables: Tuple[Iterable[Hashable]]) -> bool:
-    """Check whether passed iterables contain the same (unordered) items.
-
-    The iterables can be of different types, only the underlying items are
-    compared for equality. The underlying items must be hashable.
-
-    The order of the items in each underlying iterable (if applicable), is
-    ignored. For ordered comparison, see the function same_ordered_items().
-
-    To perform a similar computer on unhashable items, see the function
-    same_items_unhashable().
-
-    Arguments:
-        tuple of iterables: objects to be compared; must have at least 2 items
-
-    Returns:
-        Boolean whether the iterables all contain same items, irrespective of
-        the order of their items.
-
-    Raises:
-        ValueError: if less than 2 iterables are passed as positional arguments
-
-    Note:
-        * Any iterators passed as arguments will be consumed.
-        * Will not return if passed an infinite iterator.
-
-    Examples:
-
-    >>> items = [(i, i+1) for i in range(10)]
-    >>> import random
-    >>> shuffled = items[:]
-    >>> random.shuffle(shuffled)
-    >>> different = items[:-1] + [None]
-    >>> longer = items + [None]
-    >>> set_items = [set(item) for item in items]
-    >>> same_items(items, set(items))
-    True
-    >>> same_items(items, reversed(items))
-    True
-    >>> same_items(items, reversed(items), shuffled)
-    True
-    >>> same_items(items, shuffled, different)
-    False
-    >>> same_items(items, shuffled, longer)
-    False
-    >>> same_items(set_items, set_items)
+    >>> allunique_hashable([['this', 'object'], ['is'], ['not', 'hashable']])
     Traceback (most recent call last):
      ...
-    TypeError: unhashable type: 'set'
-
-    """
-    if len(iterables) < 2:
-        msg = f'Got {len(iterables)} iterables; must provide at least 2'
-        raise ValueError(msg)
-    first = collections.Counter(iterables[0])
-    return all(collections.Counter(it) == first for it in iterables[1:])
-
-
-def same_ordered_items(*iterables: Tuple[Iterable[Any]]) -> bool:
-    """Check whether passed iterables contain the same items in same order.
-
-    The iterables can be of different types, only the underlying items are
-    compared for equality. The underlying items do not have to be hashable.
-
-    The order of the items in each underlying iterable must match to return
-    True. For unordered comparison, see the function same_items().
-
-    Arguments:
-        tuple of iterables: objects to be compared; must have at least 2 items
-
-    Returns:
-        Boolean whether the iterables all contain same items, irrespective of
-        the order of their items.
-
-    Raises:
-        ValueError: if less than 2 iterables are passed as positional arguments
-
-    Note:
-        * Any iterators passed as arguments will be consumed.
-        * Will not return if passed an infinite iterator.
-
-    Examples:
-
-    >>> items = [(i, i+1) for i in range(10)]
-    >>> import random
-    >>> shuffled = items[:]
-    >>> random.shuffle(shuffled)
-    >>> different = items[:-1] + [None]
-    >>> assert len(items) == len(different)
-    >>> longer = items + [None]
-    >>> assert len(items) < len(longer)
-    >>> set_items = [set(item) for item in items]
-    >>> shuffled_set_items = set_items.copy()
-    >>> random.shuffle(shuffled_set_items)
-    >>> same_ordered_items(items, items, items)
+    TypeError: unhashable type: 'list'
+    >>> allunique_hashable([])
     True
-    >>> same_ordered_items(items, reversed(items))
-    False
-    >>> same_ordered_items(items, reversed(items), shuffled)
-    False
-    >>> same_ordered_items(items, shuffled, different)
-    False
-    >>> same_ordered_items(items, shuffled, longer)
-    False
-    >>> same_ordered_items(set_items, set_items)
-    True
-    >>> same_ordered_items(set_items, shuffled_set_items)
-    False
 
     """
-    if len(iterables) < 2:
-        msg = f'Got {len(iterables)} iterables; must provide at least 2'
-        raise ValueError(msg)
-    zipped_items = itertools.zip_longest(*iterables, fillvalue=_NO_VALUE)
-    return all(all_equal_items_sequence(item) for item in zipped_items)
-
-
-def inner_product(
-    left: Iterable[Any],
-    right: Iterable[Any],
-    *,
-    operation: Callable[[Any, Any], Any] = operator.mul,
-    mapping: Callable = map,
-    reduction: Callable[[Iterable[Any]], Any] = sum,
-) -> Any:
-    """
-
-    >>> inner_product(range(1, 5), range(1, 5)) == 1 + 4 + 9 + 16
-    True
-    >>> c1 = [complex(1, -1), complex(3, 5)]
-    >>> c2 = [complex(2, 2), complex(-3, 1)]
-    >>> inner_product(c1, c2)
-    (-10-12j)
-    >>> animals = ['alpaca', 'cat', 'dog', 'frog', 'zebra']
-    >>> foods = ['avocado', 'banana', 'doughnuts', 'fries', 'goulash']
-    >>> def start_same(s1, s2): return s1.lower()[0] == s2.lower()[0]
-    >>> inner_product(animals, foods, operation=start_same)
-    3
-
-    """
-    return reduction(mapping(operation, left, right))
+    seen = set()
+    saw = seen.add
+    return not any(item in seen or saw(item) for item in iterable)
