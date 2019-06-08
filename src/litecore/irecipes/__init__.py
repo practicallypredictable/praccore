@@ -77,7 +77,7 @@ from .rotate import (  # noqa: F401
     finite_cycle,
     enumerate_cycle,
     round_robin,
-    round_robin_longest,
+    round_robin_shortest,
     rotate_cycle,
     intersperse,
 )

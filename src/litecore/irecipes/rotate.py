@@ -8,7 +8,6 @@ from typing import (
     Tuple,
 )
 
-from litecore.sentinels import NO_VALUE as _NO_VALUE
 import litecore.irecipes.common as _common
 
 
@@ -71,7 +70,7 @@ def enumerate_cycle(
     return ((i, item) for i in counter for item in iterable)
 
 
-def round_robin(*iterables) -> Iterator:
+def round_robin_shortest(*iterables) -> Iterator:
     """Return iterator yielding from each iterable in turn.
 
     Stop when the last item from the shortest iterable is yielded.
@@ -87,18 +86,21 @@ def round_robin(*iterables) -> Iterator:
     >>> numbers = range(3)
     >>> chars = 'abcde'
     >>> classes = [int, str, dict, list]
-    >>> list(round_robin(numbers, chars, classes))
+    >>> list(round_robin_shortest(numbers, chars, classes))
     [0, 'a', <class 'int'>, 1, 'b', <class 'str'>, 2, 'c', <class 'dict'>]
 
     """
     return itertools.chain.from_iterable(zip(*iterables))
 
 
-def round_robin_longest(*iterables) -> Iterator:
+def round_robin(*iterables) -> Iterator:
     """Return iterator yielding from each iterable in turn.
 
     Continue until all iterables have been consumed. As each iterable is
     consumed, it falls out of the rotation.
+
+    Same as the standard library itertools recipe roundrobin(). See:
+        https://docs.python.org/3/library/itertools.html#itertools-recipes
 
     Arguments:
         an arbitrary number of iterable positional arguments
@@ -111,24 +113,45 @@ def round_robin_longest(*iterables) -> Iterator:
     >>> numbers = range(3)
     >>> chars = 'abcde'
     >>> classes = [int, str, dict, list]
-    >>> list(round_robin_longest(numbers, chars, classes))  # doctest: +ELLIPSIS
+    >>> list(round_robin(numbers, chars, classes))  # doctest: +ELLIPSIS
     [0, 'a', ... 2, 'c', <class 'dict'>, 'd', <class 'list'>, 'e']
 
     """
-    zipped = itertools.zip_longest(*iterables, fillvalue=_NO_VALUE)
-    chained = itertools.chain.from_iterable(zipped)
-    return itertools.filterfalse(lambda item: item is _NO_VALUE, chained)
+    active = len(iterables)
+    nexts = itertools.cycle(iter(it).__next__ for it in iterables)
+    while active:
+        try:
+            for get_next in nexts:
+                yield get_next()
+        except StopIteration:
+            active -= 1
+            nexts = itertools.cycle(itertools.islice(nexts, active))
 
 
 def rotate_cycle(iterable: Iterable[Any]) -> Iterator[Tuple[Any, ...]]:
-    """
+    """Return infinite iterator rotating through given values.
+
+    Items of the returned iterator will all be tuples of the same length as the
+    passed iterable (which must be finite). The items of each tuple will be
+    rotated one position relative to the preceding tuple. The first tuple will
+    have the items in the same order as the passed iterable.
+
+    The rotating pattern will cycle endlessly.
+
+    If the iterable is an iterator, it will be consumed.
+
+    Arguments:
+        iterable: finite iterable specifying values to be cycled
+
+    Returns:
+        infinite iterator cycling through the given values
 
     >>> from litecore.irecipes.common import take
     >>> take(5, rotate_cycle(range(4)))
     [(0, 1, 2, 3), (1, 2, 3, 0), (2, 3, 0, 1), (3, 0, 1, 2), (0, 1, 2, 3)]
 
     """
-    items = list(iterable)
+    items = tuple(iterable)
     return _common.window(len(items), itertools.cycle(items))
 
 
@@ -156,6 +179,9 @@ def intersperse(
     Returns:
         iterator with the value introduced between items of original iterable
 
+    Raises:
+        ValueError: if spacing argument is less than 1
+
     >>> list(intersperse('hi', range(5)))
     [0, 'hi', 1, 'hi', 2, 'hi', 3, 'hi', 4]
     >>> list(intersperse('hi', range(5), spacing=2))
@@ -166,11 +192,11 @@ def intersperse(
     """
     if spacing == 1:
         filler = itertools.repeat(value)
-        return _common.drop(1, round_robin(filler, iterable))
+        return _common.drop(1, round_robin_shortest(filler, iterable))
     elif spacing > 1:
         filler = itertools.repeat([value])
         batches = _common.take_batches(iterable, length=spacing)
-        chain = _common.drop(1, round_robin(filler, batches))
+        chain = _common.drop(1, round_robin_shortest(filler, batches))
         return itertools.chain.from_iterable(chain)
     else:
         msg = f'spacing argument must be positive'
