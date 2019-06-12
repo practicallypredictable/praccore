@@ -1,3 +1,6 @@
+"""Functions for selecting items from an iterable.
+
+"""
 import collections
 import itertools
 
@@ -8,7 +11,9 @@ from typing import (
     Optional,
 )
 
-from litecore.irecipes.typealiases import FilterFunc
+from litecore.irecipes.typealiases import (
+    FilterFunc,
+)
 
 
 def only_one(iterable: Iterable[Any]) -> Any:

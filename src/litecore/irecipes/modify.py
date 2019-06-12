@@ -1,6 +1,4 @@
-"""Various functions which process one or more iterables.
-
-Many functions/generators yield items from or return a modified iterator.
+"""Various functions which modify one or more iterables.
 
 """
 import itertools
@@ -15,10 +13,14 @@ from typing import (
     Union,
 )
 
-import litecore.utils
-from litecore.sentinels import NO_VALUE as _NO_VALUE
 import litecore.irecipes.common as _common
-from litecore.irecipes.typealiases import FilterFunc, KeyFunc
+
+from litecore.sentinels import NO_VALUE as _NO_VALUE
+
+from litecore.irecipes.typealiases import (
+    FilterFunc,
+    KeyFunc,
+)
 
 
 def prepend(
@@ -26,7 +28,7 @@ def prepend(
         value: Any,
         *,
         times: int = 1,
-) -> Iterator:
+) -> Iterator[Any]:
     """Return an iterator with a specified value prepended.
 
     Arguments:
@@ -34,10 +36,11 @@ def prepend(
         value: the value to prepend to the iterable
 
     Keyword Arguments:
-        times: number of times to prepend the value (optional; default is 1)
+        times: number of times to prepend the value
+            (optional; default is 1)
 
     Returns:
-        iterable combining the prepended value and the original iterable
+        iterator prepending the specified value(s) to the items of the iterable
 
     Examples:
 
@@ -55,7 +58,7 @@ def pad(
         value: Any,
         *,
         times: Optional[int] = None,
-) -> Iterator:
+) -> Iterator[Any]:
     """Return iterator of original iterable followed by specified padding.
 
     Default behavior is to add an infinite number of None objects on the end
@@ -68,6 +71,9 @@ def pad(
 
     Keyword Arguments:
         times: number of times to pad (optional; default is None)
+
+    Returns:
+        iterator appending the specified value(s) to the items of the iterable
 
     Examples:
 
@@ -284,7 +290,7 @@ def replace_multi(
 
     Raises:
         ValueError: if passed a non-positive maxreplacements argument, or
-            items is provided and is incorrect, or if items it not provided
+            items is provided and is incorrect, or if items is not provided
             and it must be provided
 
     Examples:
@@ -337,11 +343,12 @@ def replace_multi(
 
         def matches(values):
             return tuple(values) == tuple(condition)
+
     if callable(new_value):
         def replace_with(values):
             return new_value(*values)
     else:
-        if litecore.utils.is_chars(new_value):
+        if isinstance(new_value, (str, bytes, bytearray)):
             replacement = (new_value,)
         else:
             try:
@@ -351,6 +358,7 @@ def replace_multi(
 
         def replace_with(values):
             return replacement
+
     windows = _common.window(items, pad(iterable, _NO_VALUE, times=items - 1))
     replacements = 0
     for values in windows:

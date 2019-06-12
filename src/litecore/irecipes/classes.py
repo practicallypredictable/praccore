@@ -9,12 +9,13 @@ from typing import (
     Tuple,
 )
 
-from litecore import LitecoreError
 import litecore.irecipes.common as _common
+
+from litecore import LitecoreError
 
 
 class IteratorBoundError(LitecoreError, RuntimeError):
-    """Reached allowed limit of number of items consumed from an iterator."""
+    """Reached limit of number of items consumed from an iterator."""
 
 
 class BoundedIterator(collections.abc.Iterator):
@@ -22,16 +23,17 @@ class BoundedIterator(collections.abc.Iterator):
 
     Use this as a wrapper around potentially infinite iterators.
 
-    If the keyword argument raise_immediately is False (the default), the
-    first attempt to consume an item after hitting the bound will raise
-    StopIteration. The next attempt to consume an item will raise
+    If the keyword argument raise_immediately is False (the default),
+    the first attempt to consume an item after hitting the bound will
+    raise StopIteration. The next attempt to consume an item will raise
     an IteratorBoundError.
 
     If raise_immediately is True, an IteratorBoundError will be raised
-    as soon as an attempt is made to consume an item after hitting the bound.
+    as soon as an attempt is made to consume an item after hitting the
+    bound.
 
-    If the wrapped iterable is in iterator, it will retain its state even after
-    hitting the bound for the wrapping iterator.
+    If the wrapped iterable is in iterator, it will retain its state
+    even after hitting the bound for the wrapping iterator.
 
     Arguments:
         iterable: iterable object to wrap
@@ -41,8 +43,8 @@ class BoundedIterator(collections.abc.Iterator):
         raise_immediately: bool (optional; default is False)
 
     Raises:
-        IteratorBoundError: if an attempt is made to consume more than the
-            allowed maximum number of items
+        IteratorBoundError: if an attempt is made to consume more than
+            the allowed maximum number of items
 
     Examples:
 
@@ -56,7 +58,7 @@ class BoundedIterator(collections.abc.Iterator):
     >>> next(it)
     Traceback (most recent call last):
      ...
-    iterators.IteratorBoundError: hit bound of 5 items consumed
+    classes.IteratorBoundError: hit bound of 5 items consumed
     >>> next(underlying), next(underlying)
     (5, 6)
     >>> it = BoundedIterator(range(8), bound=5, raise_immediately=True)
@@ -67,7 +69,7 @@ class BoundedIterator(collections.abc.Iterator):
     >>> list(it)
     Traceback (most recent call last):
      ...
-    iterators.IteratorBoundError: hit bound of 5 items consumed
+    classes.IteratorBoundError: hit bound of 5 items consumed
 
     """
     def __init__(
@@ -122,11 +124,11 @@ class CachedIterator(collections.abc.Iterator):
 
     Progressively caches the items of the iterator to allow indexed access.
 
-    The cache is a list of all the visited items, so beware of hanging for
-    inifinite iterators and memory usage for a large number of items.
+    The cache is a list of all the visited items, so beware of hanging
+    for inifinite iterators and memory usage for a large number of items.
 
-    To 'reset' the cached iterator to point to the start of the items, use the
-    method seek() with argument 0.
+    To 'reset' the cached iterator to point to the start of the items,
+    use the method seek() with argument 0.
 
     Arguments:
         iterable: iterable object to wrap and cache
@@ -187,8 +189,8 @@ class CachedIterator(collections.abc.Iterator):
 
         Position 0 is the beginning of the cache.
 
-        If the position is set beyond the current cache size, additional items
-        will be consumed from the iterator and stored in the cache.
+        If the position is set beyond the current cache size, additional
+        items will be consumed from the iterator and stored in the cache.
 
         """
         self._index = index

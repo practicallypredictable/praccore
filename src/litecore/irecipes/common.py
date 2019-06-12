@@ -19,7 +19,11 @@ from typing import (
 )
 
 from litecore.sentinels import NO_VALUE as _NO_VALUE
-from litecore.irecipes.typealiases import KeyFunc, FilterFunc
+
+from litecore.irecipes.typealiases import (
+    KeyFunc,
+    FilterFunc,
+)
 
 
 def peek(
@@ -34,8 +38,10 @@ def peek(
 
     Keyword Arguments:
         default: value to return if iterable is empty
+
     Returns:
-        tuple of the first item and an iterator equivalent to the original
+        tuple consisting of the first item, and an iterator equivalent
+        to the original iterable
 
     Examples:
 
@@ -67,10 +73,10 @@ def consume(
 ) -> None:
     """Consume (and discard) items of an iterator.
 
-    Without the optional items keyword argument, consumes all of the iterator
-    quickly. With items specified, consumes at most that many items of the
-    iterator. If the iterator has fewer items than the specified number, the
-    iterator will be fully consumed.
+    Without the optional items keyword argument, consumes all of the
+    iterator quickly. With items specified, consumes at most that many
+    items of the iterator. If the iterator has fewer items than the
+    specified number, the iterator will be fully consumed.
 
     Arguments:
         iterator: generic iterator
@@ -111,9 +117,9 @@ def take(
 ) -> Collection[Any]:
     """Return a collection of a specified number of items of an iterable.
 
-    The returned collection by default is a list. Other possibilities include
-    tuple, set, collections.OrderedDict.fromkeys, collections.deque or
-    custom-defined collection types.
+    The returned collection by default is a list. Other possibilities
+    include tuple, set, collections.OrderedDict.fromkeys, collections.deque
+    or custom-defined collection types.
 
     The returned collection will be initialized by calling its constructor
     with an iterable of length min(len(iterable), items).
@@ -152,19 +158,20 @@ def drop(
         items: int,
         iterable: Iterable[Any],
 ) -> Iterator[Any]:
-    """Return iterator of an iterable skipping the specified number of items.
+    """Return iterator of an iterable skipping specified number of items.
 
-    If the passed iterable does not have the specified number of items, the
-    returned iterator will have no items.
+    If the passed iterable does not have the specified number of items,
+    the returned iterator will have no items.
 
-    If the passed iterable is an iterator, its initial items will be consumed.
+    If the passed iterable is an iterator, its initial items will be
+    consumed.
 
     Arguments:
         items: non-negative number of items to skip
         iterable: object to be acted upon
 
     Returns:
-        Iterator skipping the specified number of items
+        iterator skipping the specified number of items
 
     Examples:
 
@@ -182,10 +189,10 @@ def drop(
 
 
 def pairwise(iterable: Iterable[Any]) -> Iterator[Tuple[Any, Any]]:
-    """Return iterator of overlapping pairs of items from original iterable.
+    """Return iterator of overlapping pairs of items from an iterable.
 
-    Will return an empty iterable if the passed iterable does not have at least
-    two items.
+    Will return an empty iterable if the passed iterable does not have
+    at least two items.
 
     Will not return if passed an infinite iterator.
 
@@ -213,12 +220,48 @@ def pairwise(iterable: Iterable[Any]) -> Iterator[Tuple[Any, Any]]:
 def window(
         items: int,
         iterable: Iterable[Any],
+) -> Iterator[Tuple[Any, ...]]:
+    """Return iterator of moving window of items from original iterable.
+
+    If the window length extends beyond the last item of the iterable,
+    return an empty iterable.
+
+    Arguments:
+        items: number of items to include in each window
+        iterable: object to be iterated over
+
+    Returns:
+        iterator of tuples of pairs of sequential items from iterable
+
+    Examples:
+
+    >>> list(window(3, range(5)))
+    [(0, 1, 2), (1, 2, 3), (2, 3, 4)]
+    >>> list(window(4, range(3)))
+    []
+
+    """
+    iterator = iter(iterable)
+    window = tuple(itertools.islice(iterator, items))
+    if len(window) == items:
+        yield window
+    for item in iterator:
+        window = window[1:] + (item,)
+        yield window
+
+
+def window_padded(
+        items: int,
+        iterable: Iterable[Any],
         *,
         start: int = 0,
         step: int = 1,
         fillvalue: Any = None,
 ) -> Iterator[Tuple[Any, ...]]:
-    """Return iterator of moving window of items from original iterable.
+    """Return iterator of moving windows from iterable, padding if needed.
+
+    Similar to window(), with the addition of keyword arguments for
+    specifying padding, start point and step size.
 
     If the start point of the windowing is beyond the last item in the
     iterable, return an empty tuple.
@@ -232,32 +275,32 @@ def window(
             (optional; defaults to 0, the beginning of the iterable)
         step: step size for each move of the window
             (optional; defaults to 1)
-        fillvalue: default value to use if the window extends beyond end of
-            the iterable (optional; default is None)
+        fillvalue: default value to use if the window extends beyond end
+            of the iterable (optional; default is None)
+
     Returns:
         iterator of tuples of pairs of sequential items from iterable
 
     Examples:
 
-    >>> list(window(3, range(5)))
+    >>> list(window_padded(3, range(5)))
     [(0, 1, 2), (1, 2, 3), (2, 3, 4)]
-    >>> list(window(3, range(6), step=2))
+    >>> list(window_padded(3, range(6), step=2))
     [(0, 1, 2), (2, 3, 4), (4, 5, None)]
-    >>> list(window(4, range(3)))
+    >>> list(window_padded(4, range(3)))
     [(0, 1, 2, None)]
-    >>> list(window(3, range(6), start=2, step=2))
+    >>> list(window_padded(3, range(6), start=2, step=2))
     [(2, 3, 4), (4, 5, None)]
-    >>> list(window(4, range(3), start=5))
+    >>> list(window_padded(4, range(3), start=5))
     []
 
     """
     if items <= 0:
-        msg = f'Got items argument {items!r}; must be positive'
+        msg = f'items must be positive'
         raise ValueError(msg)
     if step <= 0:
-        msg = f'Got step argument {step!r}; must be positive'
+        msg = f'step must be positive'
         raise ValueError(msg)
-
     iterator = iter(iterable)
     if start > 0:
         # Move to the start point, ignore the values
@@ -268,7 +311,7 @@ def window(
             # So return empty tuple
             return ()
     elif start < 0:
-        msg = f'Got start argument {start!r}; cannot be negative'
+        msg = f'start must be non-negative'
         raise ValueError(msg)
 
     window = collections.deque([], maxlen=items)
@@ -305,15 +348,15 @@ def take_batches(
         fillvalue: Any = _NO_VALUE,
         factory: Optional[Type[Collection]] = None,
 ) -> Iterator[Collection[Any]]:
-    """Break an iterable into an iterator of collections of specified length.
+    """Break an iterable into iterator of collections of specified length.
 
-    The returned collection by default is a tuple. Other possibilities include
-    list, set, collections.OrderedDict.fromkeys, collections.deque or
-    custom-defined collection types.
+    The returned collection by default is a tuple. Other possibilities
+    include list, set, collections.OrderedDict.fromkeys, collections.deque
+    or custom-defined collection types.
 
-    If the iterable is of a length not evenly divisible by the batch length,
-    the last list item of the returned iterator will be shorter than the
-    specified length.
+    If the iterable is of a length not evenly divisible by the batch
+    length, the last list item of the returned iterator will be shorter
+    than the specified length.
 
     Use this function to break computations on large collections of items
     into smaller batches.
@@ -324,10 +367,11 @@ def take_batches(
     Keyword Arguments:
         length: non-negative number of items to be consumed and returned
         factory: type of collection to return
-            (optional; default is None, which is the same as specifying tuple)
+            (optional; default is None, same as specifying tuple)
 
     Returns:
-        iterator of collections of specified length (or shorter for the last)
+        iterator of collections of specified length (or shorter for the
+        last item of the collection)
 
     Examples:
 
@@ -389,6 +433,42 @@ def keyed_items(
         *,
         key: Optional[KeyFunc] = None,
 ) -> Iterator[Tuple[Any, Any]]:
+    """Return iterator of tuples of items and key values of an iterable.
+
+    Given an iterable of values and an (optional) key function, return
+    an iterator of 2-tuples for each item, with the first being the
+    value of the key function applied to the item, and the second being
+    the item unmodified. If the key function is None, the original item
+    value is used as the key.
+
+    This is used elsewhere in this package as an alternative to using
+    lambda expressions for optional key functions. It's generally better
+    to replace the original iterable with a generator expression rather
+    than calling a lambda function (particuarly a "null" expression
+    such as lambda x: x) in a tight loop.
+
+    Arguments:
+        iterable: object with items to be keyed
+
+    Keyword Arguments:
+        key: single-argument callable key function
+            (optional; defaults to None)
+
+    Returns:
+        iterator of 2-tuples, the first item of each being the key and
+        the second item of each being the original item value
+
+    Examples:
+
+    >>> parity = lambda x: 'even' if x % 2 == 0 else 'odd'
+    >>> list(keyed_items(range(5), key=parity))
+    [('even', 0), ('odd', 1), ('even', 2), ('odd', 3), ('even', 4)]
+    >>> list(keyed_items('AbcDe'))
+    [('A', 'A'), ('b', 'b'), ('c', 'c'), ('D', 'D'), ('e', 'e')]
+    >>> list(keyed_items('AbcDe', key=lambda s: s.lower()))
+    [('a', 'A'), ('b', 'b'), ('c', 'c'), ('d', 'D'), ('e', 'e')]
+
+    """
     if key is not None:
         return ((key(x), x) for x in iterable)
     else:
@@ -401,7 +481,43 @@ def flag_where(
         *,
         maxflags: Optional[int] = None,
 ) -> Iterator[Any]:
-    """
+    """Return iterator of tuples of items and truth values of an iterable.
+
+    Given an iterable of values and a condition, return an iterator of
+    2-tuples for each item, with the first being the value True or False,
+    and the second being the item unmodified.
+
+    The condition is either a value or a single-argument callable which
+    returns a boolean value. If a value is specified, items equalling
+    that value will test True. If a callable is specified, it will be
+    called with each item as argument and the return value used as the
+    truth value for that item.
+
+    The optional maxflags argument specifies a limit on the number of
+    values which may be flagged as True.
+
+    This is used elsewhere in this package as an alternative to using
+    lambda expressions for optional key functions. It's generally better
+    to replace the original iterable with a generator expression rather
+    than calling a lambda function (particuarly a "null" expression
+    such as lambda x: x) in a tight loop.
+
+    Arguments:
+        where: either a value, or a single-argument callable which
+            returns a boolean value
+        iterable: object with items to be flagged True or False
+
+    Keyword Arguments:
+        maxflags: maximum number of values to flag as True
+            (optional; defaults to None, signifying no limit)
+
+    Returns:
+        iterator of 2-tuples, the first item of each being the truth
+        value of the item (or False, if any maxflags limit has been
+        hit), the second item of each being the original item value.
+
+    Raises:
+        ValueError: if maxflags is specified and less than 1
 
     Examples:
 
@@ -420,6 +536,8 @@ def flag_where(
         else:
             return ((True, x) if x == where else (False, x) for x in iterable)
     else:
+        if maxflags < 1:
+            raise ValueError('maxflags must be positive')
         flags = 0
 
         if callable(where):

@@ -1,3 +1,6 @@
+"""Typing aliases used in this sub-package.
+
+"""
 from typing import (
     Any,
     Callable,

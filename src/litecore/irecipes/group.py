@@ -1,4 +1,6 @@
-"""Functions and classes for grouping and simple run-length encoding.
+"""Functions and classes for grouping items of iterables.
+
+Also includes functions and classes for simple run-length encoding.
 
 """
 import collections

@@ -12,12 +12,13 @@ from typing import (
     Tuple,
 )
 
-from litecore.sentinels import NO_VALUE as _NO_VALUE
 import litecore.irecipes.common as _common
+
+from litecore.sentinels import NO_VALUE as _NO_VALUE
 
 
 def zip_strict(*iterables) -> Iterator[Tuple[Any, ...]]:
-    """Same as built-in zip, except requires all iterables to be equal-length.
+    """Same as built-in zip, but requires all iterables to be same length.
 
     Arguments:
         arbitrary number of iterable positional arguments
@@ -51,32 +52,32 @@ def zip_strict(*iterables) -> Iterator[Tuple[Any, ...]]:
 
 
 def unzip(iterable: Iterable[Tuple[Any, ...]]) -> Tuple[Iterator[Any], ...]:
-    """Inverse of built-in zip(), returning separate iterators of tuple items.
+    """Inverse of built-in zip(), returns iterators of each tuple item.
 
     Returns tuple of iterators based upon an iterable, each item of which
-    is assumed to be a tuple of the same number of items (i.e., of the sort
-    created by zip() built-in).
+    is assumed to be a tuple of the same number of items (i.e., of the
+    sort created by zip() built-in).
 
-    Assumes that all items of the iterable are a tuple of the same length as
-    the initial item.
+    Assumes that all items of the iterable are a tuple with same length
+    as the initial item.
 
-    The iterable can be infinite (i.e., a zip() of infinite iterators). In that
-    case, each returned iterator will also be infinite.
+    The iterable can be infinite (i.e., a zip() of infinite iterators).
+    In that case, each returned iterator will also be infinite.
 
     Uses itertools.tee(), see the standard library docs for cautions:
         https://docs.python.org/3/library/itertools.html#itertools.tee
 
-    In particular, this may require significant auxiliary storage and/or suffer
-    from reduced performance in certain cases. For finite iterables, see the
-    unzip_finite() and unzip_longest_finite() functions in this module for
-    simpler and faster alternatives.
+    In particular, this may require significant auxiliary storage and/or
+    suffer from reduced performance in certain cases. For finite
+    iterables, see the unzip_finite() and unzip_longest_finite()
+    functions for simpler and faster alternatives.
 
     Arguments:
         iterable: iterator or collection of tuples to be unzipped
 
     Returns:
-        tuple of iterators, each item corresponding to an item of the original
-            zipped iterable
+        tuple of iterators, each item corresponding to an item of the
+            original zipped iterable
 
     >>> letters, numbers = unzip(zip('abcd', range(8)))
     >>> tuple(letters)
@@ -111,19 +112,19 @@ def unzip(iterable: Iterable[Tuple[Any, ...]]) -> Tuple[Iterator[Any], ...]:
 def unzip_finite(
         iterable: Iterable[Tuple[Any, ...]],
 ) -> Tuple[Iterator[Any], ...]:
-    """Similar as unzip() in this module, but limited to finite iterables.
+    """Similar to unzip(), but limited to finite iterables.
 
-    This function does not distinguish sentinel values of the sort used by
-    itertools.zip_longest(). Such sentinels will be included in the returned
-    item iterators. See unzip_longest_finite() in this module to efficiently
-    unzip an iterable created using itertools.zip_longest().
+    This function does not distinguish sentinel values of the sort used
+    by itertools.zip_longest(). Such sentinels will be included in the
+    returned item iterators. See unzip_longest_finite() in this module
+    to efficiently unzip an iterable created using itertools.zip_longest().
 
     Arguments:
         iterable: iterator or collection of tuples to be unzipped
 
     Returns:
-        tuple of iterators, each item corresponding to an item of the original
-            zipped iterable
+        tuple of iterators, each item corresponding to an item of the
+            original zipped iterable
 
     >>> letters, numbers = unzip_finite(zip('abcd', range(8)))
     >>> letters
@@ -148,23 +149,23 @@ def unzip_longest_finite(
         *,
         fillvalue: Optional[Any] = None,
 ) -> Tuple[Iterator[Any], ...]:
-    """Similar as unzip() in this module, but limited to finite iterables.
+    """Similar to unzip(), but limited to finite iterables.
 
     This function distinguishes sentinel values of the sort used by
-    itertools.zip_longest(). Such sentinels will be stripped from the returned
-    item iterators. Use unzip_finite() in this module to efficiently
-    unzip iterables created using built-in zip().
+    itertools.zip_longest(). Such sentinels will be stripped from the
+    returned item iterators. Use unzip_finite() in this module to
+    efficiently unzip iterables created using built-in zip().
 
     Arguments:
         iterable: iterator or collection of tuples to be unzipped
 
     Keyword Arguments:
-        fillvalue: sentinel value (i.e., created by itertools.zip_longest())
+        fillvalue: sentinel value (similar to itertools.zip_longest())
             to be stripped from the returned item iterators
 
     Returns:
-        tuple of iterators, each item corresponding to an item of the original
-            zipped iterable
+        tuple of iterators, each item corresponding to an item of the
+            original zipped iterable
 
     >>> import itertools
     >>> zipped = itertools.zip_longest('abcd', range(6), fillvalue=-1)

@@ -1,5 +1,7 @@
+"""Functions for testing or extracting unique values from iterables.
+
+"""
 import itertools
-import operator
 
 from typing import (
     Any,
@@ -10,7 +12,9 @@ from typing import (
     Tuple,
 )
 
-from litecore.irecipes.typealiases import KeyFunc
+from litecore.irecipes.typealiases import (
+    KeyFunc,
+)
 
 
 def unique_hashable(
@@ -25,23 +29,23 @@ def unique_hashable(
     Same as standard library itertools recipes unique_everseen. See:
         https://docs.python.org/3/library/itertools.html
 
-    The optional key is a single-argument callable that, if provided, will be
-    called to produce a modified value for each item prior to determining
-    uniqueness. Only items with different keys will compare as different. The
-    default is None, which means that each item is tested for uniqueness
-    without modification.
+    The optional key is a single-argument callable that, if provided,
+    will be called to produce a modified value for each item prior to
+    determining uniqueness. Only items with different keys will compare
+    as different. The default is None, which means that each item is
+    tested for uniqueness without modification.
 
     Arguments:
         iterable: iterator or collection of items
 
     Keyword Arguments:
         key: single-argument callable mapping function
-            (optional; defaults to None, signifying each item is processed
-            without modification)
+            (optional; defaults to None, signifying each item is
+            to be processed without modification)
 
     Yields:
-        2-tuples of unique values in the order they were encountered and the
-        index of each item in the passed iterable
+        2-tuples of unique values in the order they were encountered and
+        the index of each item in the passed iterable
 
     >>> list(unique('AAAABBBCCDAABBB'))
     ['A', 'B', 'C', 'D']
@@ -76,27 +80,30 @@ def enumerate_unique(
         *,
         key: Optional[KeyFunc] = None,
 ) -> Iterator[Tuple[int, Any]]:
-    """Return iterator of unique items from an iterable, along with item index.
+    """Return iterator of unique items with indices from an iterable.
+
+    Similar to built-in enumerate(), except only the items with unique
+    values will be included.
 
     The items in the iterable may be hashable or unhashable.
 
-    The optional key is a single-argument callable that, if provided, will be
-    called to produce a modified value for each item prior to determining
-    uniqueness. Only items with different keys will compare as different. The
-    default is None, which means that each item is tested for uniqueness
-    without modification.
+    The optional key is a single-argument callable that, if provided,
+    will be called to produce a modified value for each item prior to
+    determining uniqueness. Only items with different keys will compare
+    as different. The default is None, which means that each item is
+    tested for uniqueness without modification.
 
     Arguments:
         iterable: iterator or collection of items
 
     Keyword Arguments:
         key: single-argument callable mapping function
-            (optional; defaults to None, signifying each item is processed
-            without modification)
+            (optional; defaults to None, signifying each item is to be
+            processed without modification)
 
     Yields:
-        2-tuples of unique values in the order they were encountered and the
-        index of each item in the passed iterable
+        2-tuples of unique values in the order they were encountered and
+        the index of each item in the passed iterable
 
     >>> list(enumerate_unique('AAAABBBCCDAABBB'))
     [(0, 'A'), (4, 'B'), (7, 'C'), (9, 'D')]
@@ -148,23 +155,23 @@ def unique(
 
     The items in the iterable may be hashable or unhashable.
 
-    The optional key is a single-argument callable that, if provided, will be
-    called to produce a modified value for each item prior to determining
-    uniqueness. Only items with different keys will compare as different. The
-    default is None, which means that each item is tested for uniqueness
-    without modification.
+    The optional key is a single-argument callable that, if provided,
+    will be called to produce a modified value for each item prior to
+    determining uniqueness. Only items with different keys will compare
+    as different. The default is None, which means that each item is
+    tested for uniqueness without modification.
 
     Arguments:
         iterable: iterator or collection of items
 
     Keyword Arguments:
         key: single-argument callable mapping function
-            (optional; defaults to None, signifying each item is processed
-            without modification)
+            (optional; defaults to None, signifying each item is to be
+            processed without modification)
 
     Yields:
-        each unique value in the iterable in the order it is occurs in the
-        passed iterable
+        each unique value in the iterable in the order it is occurs in
+        the passed iterable
 
     Examples:
 
@@ -182,8 +189,7 @@ def unique(
     [{'value': 1, 'even': False}, {'value': 2, 'even': True}]
 
     """
-    get_value = operator.itemgetter(1)
-    return map(get_value, enumerate_unique(iterable, key=key))
+    return (item for _, item in enumerate_unique(iterable, key=key))
 
 
 def argunique(
@@ -195,27 +201,23 @@ def argunique(
 
     The items in the iterable may be hashable or unhashable.
 
-    The optional key is a single-argument callable that, if provided, will be
-    called to produce a modified value for each item prior to determining
-    uniqueness. Only items with different keys will compare as different. The
-    default is None, which means that each item is tested for uniqueness
-    without modification.
+    The optional key is a single-argument callable that, if provided,
+    will be called to produce a modified value for each item prior to
+    determining uniqueness. Only items with different keys will compare
+    as different. The default is None, which means that each item is
+    tested for uniqueness without modification.
 
     Arguments:
         iterable: iterator or collection of items
 
     Keyword Arguments:
         key: single-argument callable mapping function
-            (optional; defaults to None, signifying each item is processed
-            without modification)
+            (optional; defaults to None, signifying each item is to be
+            processed without modification)
 
     Yields:
         indices of each unique value in the iterable in the order it is
         occurs in the passed iterable
-
-    Note:
-        Will not return if passed an infinite iterator.
-        Calls unique_with_index() but only yields item indices, not values
 
     Examples:
 
@@ -233,5 +235,82 @@ def argunique(
     [0, 1]
 
     """
-    get_index = operator.itemgetter(0)
-    return map(get_index, enumerate_unique(iterable, key=key))
+    return (index for index, _ in enumerate_unique(iterable, key=key))
+
+
+def allunique(iterable: Iterable[Any]) -> bool:
+    """Check whether all items of an iterable are distinct.
+
+    Works for either hashable or unhashable items. If all items are
+    hashable, allunique_hashable() will be much faster.
+
+    Returns True for an empty iterable. Will not return if passed an
+    infinite iterator.
+
+    Arguments:
+        iterable: object to be checked
+
+    Returns:
+        True if all items of iterable are different, otherwise False
+
+    Examples:
+
+    >>> allunique(range(100))
+    True
+    >>> allunique(iter(range(100)))
+    True
+    >>> allunique(list(range(100)) + [9])
+    False
+    >>> allunique(['alice', 'bob', 'charlie'])
+    True
+    >>> allunique('hi ho')
+    False
+    >>> allunique([['this', 'object'], ['is'], ['not', 'hashable']])
+    True
+    >>> allunique([])
+    True
+
+    """
+    seen = []
+    saw = seen.append
+    return not any(item in seen or saw(item) for item in iterable)
+
+
+def allunique_hashable(iterable: Iterable[Hashable]) -> bool:
+    """Check whether all items of an iterable are distinct.
+
+    Only works for hashable items. If at least one item is unhashable,
+    use allunique().
+
+    Returns True for an empty iterable. Will not return if passed an
+    infinite iterator.
+
+    Arguments:
+        iterable: object to be checked
+
+    Returns:
+        True if all items of iterable are different, otherwise False
+
+    Examples:
+
+    >>> allunique_hashable(range(100))
+    True
+    >>> allunique_hashable(iter(range(100)))
+    True
+    >>> allunique_hashable(list(range(100)) + [9])
+    False
+    >>> allunique_hashable(['alice', 'bob', 'charlie'])
+    True
+    >>> allunique_hashable('hi ho')
+    False
+    >>> allunique_hashable([['this', 'object'], ['is'], ['not', 'hashable']])
+    Traceback (most recent call last):
+     ...
+    TypeError: unhashable type: 'list'
+    >>> allunique_hashable([])
+    True
+
+    """
+    seen = set()
+    saw = seen.add
+    return not any(item in seen or saw(item) for item in iterable)

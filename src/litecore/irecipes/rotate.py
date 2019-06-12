@@ -1,3 +1,6 @@
+"""Functions for cycling or rotating items between one or more iterables.
+
+"""
 import itertools
 
 from typing import (

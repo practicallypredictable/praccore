@@ -1,10 +1,10 @@
 """Functions and classes for processing general iterables and iterators.
 
-These functions are intended to support a functional programming style, and
-build upon the itertools standard library module.
+These functions are intended to support a functional programming style,
+and build upon the itertools standard library module.
 
-A number of the functions are taken from or are minor improvements upon the
-itertools recipes. See:
+A number of the functions are taken from or are minor improvements upon
+the itertools recipes. See:
     https://docs.python.org/3/library/itertools.html#itertools-recipes
 
 A number of the functions are also inspired by, and borrow heavily from,
@@ -14,32 +14,36 @@ a few packages on PyPI, including:
     https://pypi.org/project/boltons/
     https://pypi.org/project/ubelt/
 
-Many of those packages were developed years ago and support legacy Python 2.
-Some of these packages implement what are conceptually the same functions in
-inconsistent ways. The versions included here are intended to refresh these
-ideas for Python 3.6+.
+Many of those packages were developed years ago and support legacy
+Python 2.
 
-There is very little exception-handling in this sub-package. Most functions
-leverage off of Python built-ins or the itertools module in the standard
-library. Exceptions raised by the underlying built-ins or itertools calls
-will generally be propagated back to the caller undisturbed. Basic errors
-such as passing non-iterable objects where an iterable is expected, or non-
-integral arguments where an int is expected, will generally be detected
-by the underlying built-in or itertools function.
+Some of these packages implement what are conceptually the same functions
+in inconsistent ways. The versions included here are intended to refresh
+these ideas for Python 3.6+.
 
-Many of the functions in this sub-package will never complete or raise an
-exception if passed an infinite iterator. Take care when using infinite
-iterators.
+There is very little exception-handling in this sub-package. Most
+functions leverage off of Python built-ins or the itertools module in
+the standard library.
 
-There are certain modules which are not automatically imported into the package
-namespace, and which must be specifically imported for use. These are:
+Exceptions raised by the underlying built-ins or itertools calls will
+generally be propagated back to the caller undisturbed. Basic errors
+such as passing non-iterable objects where an iterable is expected, or
+non- integral arguments where an int is expected, will generally be
+detected by the underlying built-in or itertools function.
 
-    containers: functions which provide some special functionality for mappings
-        and sequences (which have items accessed by subscripting)
+Many of the functions in this sub-package will never complete or raise
+an exception if passed an infinite iterator. Take care when using
+infinite iterators.
 
-    joins: functions for in-memory joins of mappings based upon keys
+There are certain modules which are not automatically imported into the
+package namespace, and which must be specifically imported for use.
 
-    records: functions for making records with named fields out of mappings
+These are:
+
+    containers: functions which provide some special functionality for
+        mappings and sequences (which have items accessed by subscripting)
+
+    joins: functions for joins between mappings on keys
 
     computations: functions which only really make sense for iterables of
         numeric types
@@ -52,6 +56,7 @@ from .common import (  # noqa: F401
     drop,
     pairwise,
     window,
+    window_padded,
     take_batches,
     keyed_items,
     flag_where,
@@ -71,6 +76,8 @@ from .unique import (  # noqa: F401
     unique,
     argunique,
     unique_hashable,
+    allunique,
+    allunique_hashable,
 )
 
 from .rotate import (  # noqa: F401
@@ -126,8 +133,6 @@ from .reductions import (  # noqa: F401
     increasing,
     nondecreasing,
     nonincreasing,
-    allunique,
-    allunique_hashable,
     allequal,
     allequal_sequence,
     allequal_sorted,

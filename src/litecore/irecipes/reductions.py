@@ -1,10 +1,12 @@
+"""Functions for generating summary information about iterables.
+
+"""
 import itertools
 import operator
 
 from typing import (
     Any,
     Callable,
-    Hashable,
     Iterable,
     Optional,
     Sequence,
@@ -12,7 +14,11 @@ from typing import (
 )
 
 import litecore.irecipes.common as _common
-from litecore.irecipes.typealiases import FilterFunc, KeyFunc
+
+from litecore.irecipes.typealiases import (
+    FilterFunc,
+    KeyFunc,
+)
 
 
 def ilen(iterable: Iterable[Any]) -> int:
@@ -129,6 +135,13 @@ def iminmax(
         if y_key > hi_key:
             hi_key, hi = y_key, y
     return lo, hi
+
+
+def running(
+        reduction: Callable[[Any], Any],
+        iterable: Iterable[Any],
+) -> Any:
+    return itertools.accumulate(iterable, reduction)
 
 
 def count_where(
@@ -420,81 +433,3 @@ def allequal_sorted(
     """
     groups = itertools.groupby(iterable, key)
     return next(groups, True) and not next(groups, False)
-
-
-def allunique(iterable: Iterable[Any]) -> bool:
-    """Check whether all items of an iterable are distinct.
-
-    Works for either hashable or unhashable items. If all items are hashable,
-    allunique_hashable() will be much faster.
-
-    Returns True for an empty iterable. Will not return if passed an infinite
-    iterator.
-
-    Arguments:
-        iterable: object to be checked
-
-    Returns:
-        True if all items of iterable are different, otherwise False
-
-    Examples:
-
-    >>> allunique(range(100))
-    True
-    >>> allunique(iter(range(100)))
-    True
-    >>> allunique(list(range(100)) + [9])
-    False
-    >>> allunique(['alice', 'bob', 'charlie'])
-    True
-    >>> allunique('hi ho')
-    False
-    >>> allunique([['this', 'object'], ['is'], ['not', 'hashable']])
-    True
-    >>> allunique([])
-    True
-
-    """
-    seen = []
-    saw = seen.append
-    return not any(item in seen or saw(item) for item in iterable)
-
-
-def allunique_hashable(iterable: Iterable[Hashable]) -> bool:
-    """Check whether all items of an iterable are distinct.
-
-    Only works for hashable items. If at least one item is unhashable,
-    use allunique().
-
-    Returns True for an empty iterable. Will not return if passed an infinite
-    iterator.
-
-    Arguments:
-        iterable: object to be checked
-
-    Returns:
-        True if all items of iterable are different, otherwise False
-
-    Examples:
-
-    >>> allunique_hashable(range(100))
-    True
-    >>> allunique_hashable(iter(range(100)))
-    True
-    >>> allunique_hashable(list(range(100)) + [9])
-    False
-    >>> allunique_hashable(['alice', 'bob', 'charlie'])
-    True
-    >>> allunique_hashable('hi ho')
-    False
-    >>> allunique_hashable([['this', 'object'], ['is'], ['not', 'hashable']])
-    Traceback (most recent call last):
-     ...
-    TypeError: unhashable type: 'list'
-    >>> allunique_hashable([])
-    True
-
-    """
-    seen = set()
-    saw = seen.add
-    return not any(item in seen or saw(item) for item in iterable)

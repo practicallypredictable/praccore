@@ -1,3 +1,7 @@
+"""Functions for flattening iterables at various depth levels.
+
+"""
+import collections
 import itertools
 
 from typing import (
@@ -9,8 +13,6 @@ from typing import (
     Tuple,
     Type,
 )
-
-import litecore.utils
 
 
 def flatten(iterables: Iterable[Iterable[Any]]) -> Iterator[Any]:
@@ -116,15 +118,13 @@ def deepflatten(
     [0, 1, 2, 3, 4, [0, 1, 2, 3, 4, [...]]]
 
     """
-    stack = []
-    push_stack = stack.append
-    pop_stack = stack.pop
     seen = set()
     saw = seen.add
+    stack = collections.deque()
+    push_stack = stack.append
+    pop_stack = stack.pop
     push_stack(iter(iterable))
     saw(id(iterable))
-    is_iterable = litecore.utils.is_iterable
-    is_chars = litecore.utils.is_chars
     while stack:
         iterator = pop_stack()
         while True:
@@ -133,9 +133,18 @@ def deepflatten(
             except StopIteration:
                 break
             else:
-                do_not_iterate = is_chars(item) or not is_iterable(item)
-                if not do_not_iterate and primitives is not None:
+                is_chars = isinstance(item, (str, bytes, bytearray))
+                if not is_chars:
+                    try:
+                        iter(item)
+                    except TypeError:
+                        is_iterable = False
+                    else:
+                        is_iterable = True
+                if primitives is not None and not is_chars and is_iterable:
                     do_not_iterate = isinstance(item, primitives)
+                else:
+                    do_not_iterate = is_chars or not is_iterable
                 if do_not_iterate or id(item) in seen:
                     yield item
                 else:

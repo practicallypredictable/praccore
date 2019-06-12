@@ -1,3 +1,6 @@
+"""Classes and functions for iterating over mappings and sequences.
+
+"""
 import collections
 import operator
 
@@ -17,8 +20,9 @@ from typing import (
     Union,
 )
 
-import litecore.utils
-from litecore.irecipes.typealiases import KeyFunc
+from litecore.irecipes.typealiases import (
+    KeyFunc,
+)
 
 T = TypeVar('T')
 HT = TypeVar('HT', int, str, Hashable)
@@ -27,29 +31,29 @@ ItemsCollection = Union[Mapping[ST, T], Sequence[T]]
 HashableItemsCollection = Union[Mapping[ST, HT], Sequence[HT]]
 
 
-def iter_items(iterable: ItemsCollection) -> Iterator[Tuple[ST, T]]:
-    """Return iterator of tuples specifying items of a mapping or a sequence.
+def iter_items(container: ItemsCollection) -> Iterator[Tuple[ST, T]]:
+    """Return iterator of tuples of items from a mapping or sequence.
 
-    The intent is to provide a transparent way to iterate over items of a
-    collection that supports subscripting (i.e., mappings or sequences) and
-    keep track of the item value as well as the subscript necessary to retrieve
-    that item.
+    The intent is to provide a transparent way to iterate over items of
+    a collection that supports subscripting (i.e., mappings or sequences)
+    and keep track of the item value as well as the subscript necessary
+    to retrieve that item.
 
     For mappings, returns iterable.items(). For sequences, returns
     enumerate(iterable).
 
     Arguments:
-        iterable: mapping or sequence of items
+        container: mapping or sequence of items
 
     Returns:
-        iterator of tuples for each item of the iterable, where the second
-        component of the tuple is the item and first component of the tuple
-        is the subscript that would get the item from the iterable (i.e.,
-        item = iterable[subscript])
+        iterator of tuples for each item of the iterable, where the
+        second omponent of the tuple is the item and first component of
+        the tuple is the subscript that would get the item from the
+        iterable (i.e., item = iterable[subscript])
 
     Raises:
-        TypeError: if passed an iterator or a collection type that does not
-            support subscripting (e.g., sets)
+        TypeError: if passed an iterator or a collection type that does
+            not support subscripting (e.g., sets)
 
     Examples:
 
@@ -67,58 +71,162 @@ def iter_items(iterable: ItemsCollection) -> Iterator[Tuple[ST, T]]:
     >>> list(iter_items(iter(dict_data)))
     Traceback (most recent call last):
      ...
-    TypeError: got an iterator, expected a collection
+    TypeError: 'dict_keyiterator' object does not support indexing
 
     """
-    if litecore.utils.is_iterator(iterable):
-        msg = f'got an iterator, expected a collection'
-        raise TypeError(msg)
-    elif isinstance(iterable, collections.abc.Mapping):
-        return iterable.items()
-    elif isinstance(iterable, collections.abc.Sequence):
-        return enumerate(iterable)
-    elif isinstance(iterable, collections.abc.Collection):
-        msg = f'{type(iterable).__name__!r} object does not support indexing'
-        raise TypeError(msg)
-    # fallback to duck-typing
     try:
-        return iterable.items()
+        return container.items()
     except AttributeError:
         pass
     try:
-        iterable[0]
+        container[0]
     except IndexError:
         return iter(())
+    except KeyError:
+        # meant to handle weird cases where a custom class does not
+        #   adhere to the collections.abc.Mapping interface (i.e., it
+        #   has __getitem__ but no items() method); this should never
+        #   be encountered for proper mapping implementations
+        msg = f'{type(container).__name__!r} does not have items() method'
+        raise TypeError(msg) from None
+    except TypeError:
+        pass
     else:
-        return enumerate(iterable)
+        return enumerate(container)
+    msg = f'{type(container).__name__!r} object does not support indexing'
+    raise TypeError(msg)
 
 
-def inverted(iterable: HashableItemsCollection) -> Iterator[Tuple[HT, ST]]:
-    return ((v, k) for k, v in iter_items(iterable))
+def inverted(container: ItemsCollection) -> Iterator[Tuple[T, ST]]:
+    """Returns iterator of inverted items of a mapping or sequence.
+
+    For a mapping, the items of the returned iterator will be a tuple
+    of the form (value, key) for each item of the mapping.
+
+    For a sequence, the items of the returned iterator will be a tuple
+    of the form (value, index) for each item of the enumeration of
+    the sequence.
+
+    The values of t
+
+    Arguments:
+        container: a container that can be passed to iter_items()
+
+    Returns:
+        iterator of tuples of inverted items of the iterable
+
+    Examples:
+
+    >>> dict_data = {'a': 1, 'b': 2, 'c': 3, 'd': 2}
+    >>> seq_data = [c for c in 'abcb']
+    >>> list(inverted(dict_data))
+    [(1, 'a'), (2, 'b'), (3, 'c'), (2, 'd')]
+    >>> list(inverted(seq_data))
+    [('a', 0), ('b', 1), ('c', 2), ('b', 3)]
+
+    """
+    return ((v, k) for k, v in iter_items(container))
 
 
 def inverted_last_seen(
-        iterable: HashableItemsCollection,
+        container: HashableItemsCollection,
 ) -> Iterator[Tuple[HT, ST]]:
-    seen = dict(inverted(iterable))
-    return seen.items()
+    """Returns iterator of inverted items of a mapping or sequence.
+
+    Same as inverted(), but removes duplicate values (which will be the
+    "keys"/"indices" in the inverted iterator items). Only the most
+    recently-seen value will be included in the results.
+
+    The values of the iterable must be hashable.
+
+    Note that
+
+    Arguments:
+        container: a container that can be passed to iter_items()
+
+    Returns:
+        iterator of tuples of inverted items of the iterable
+
+    Examples:
+
+    >>> dict_data = {'a': 1, 'b': 2, 'c': 3, 'd': 2}
+    >>> list(inverted_last_seen(dict_data))
+    [(1, 'a'), (2, 'd'), (3, 'c')]
+    >>> seq_data = [c for c in 'abcb']
+    >>> list(inverted_last_seen(seq_data))
+    [('a', 0), ('b', 3), ('c', 2)]
+
+    """
+    return dict(inverted(container)).items()
 
 
 def inverted_first_seen(
-        iterable: HashableItemsCollection,
+        container: HashableItemsCollection,
 ) -> Iterator[Tuple[HT, ST]]:
+    """Returns iterator of inverted items of a mapping or sequence.
+
+    Same as inverted(), but removes duplicate values (which will be the
+    "keys"/"indices" in the inverted iterator items). Only the value
+    encountered first will be included in the results.
+
+    The values of the iterable must be hashable.
+
+    Note that
+
+    Arguments:
+        container: a container that can be passed to iter_items()
+
+    Returns:
+        iterator of tuples of inverted items of the iterable
+
+    Examples:
+
+    >>> dict_data = {'a': 1, 'b': 2, 'c': 3, 'd': 2}
+    >>> list(inverted_first_seen(dict_data))
+    [(1, 'a'), (2, 'b'), (3, 'c')]
+    >>> seq_data = [c for c in 'abcb']
+    >>> list(inverted_first_seen(seq_data))
+    [('a', 0), ('b', 1), ('c', 2)]
+
+    """
     seen = set()
     saw = seen.add
-    for v, k in inverted(iterable):
+    for v, k in inverted(container):
         if v not in seen:
             saw(v)
             yield (v, k)
 
 
 def inverted_multi_values(
-        iterable: HashableItemsCollection,
-) -> Iterator[Tuple[HT, HT]]:
-    items = iter_items(iterable)
+        container: HashableItemsCollection,
+) -> Iterator[Tuple[HT, List[HT]]]:
+    """Returns iterator of inverted items of a mapping or sequence.
+
+    Same as inverted(), but removes duplicate values (which will be the
+    "keys"/"indices" in the inverted iterator items). Only the value
+    encountered first will be included in the results.
+
+    The values of the iterable must be hashable.
+
+    Note that
+
+    Arguments:
+        iterable: a container that can be passed to iter_items()
+
+    Returns:
+        iterator of tuples of inverted items of the iterable
+
+    Examples:
+
+    >>> dict_data = {'a': 1, 'b': 2, 'c': 3, 'd': 2}
+    >>> list(inverted_first_seen(dict_data))
+    [(1, 'a'), (2, 'b'), (3, 'c')]
+    >>> seq_data = [c for c in 'abcb']
+    >>> list(inverted_first_seen(seq_data))
+    [('a', 0), ('b', 1), ('c', 2)]
+
+    """
+    items = iter_items(container)
     inverted = collections.defaultdict(list)
     for k, v in items:
         inverted[v].append(k)
@@ -142,15 +250,16 @@ def argsort(
     key: Optional[KeyFunc] = None,
     reverse: bool = False,
 ) -> List[HT]:
-    """Return list of indices corresponding to the sorted items of an iterable.
+    """Return list of indices corresponding to sorted items of an iterable.
 
-    Similar to numpy.argsort(), except works for general Python mappings and
-    sequences. Does not work for sets or other collection types that do not
-    support subscripting.
+    Similar to numpy.argsort(), except works for general Python mappings
+    and sequences. Does not work for sets or other collection types that
+    do not support subscripting.
 
-    For mappings, the value of each item will be used for the sort, and the
-    returned list will consist of the mapping keys in the order corresponding
-    to a sort of values (modified by the key function, if any).
+    For mappings, the value of each item will be used for the sort, and
+    the returned list will consist of the mapping keys in the order
+    corresponding to a sort of values (modified by the key function,
+    if any).
 
     For sequences, the returned list will consist of the indices from an
     enumeration of the items, in the order corresponding to a sort of the
@@ -161,16 +270,16 @@ def argsort(
 
     Keyword Arguments:
         key: single-argument callable returning key to be used for sorting
-            (optional; default of None means act on items without modification)
+            (optional; default of None means no modification of items)
         reverse: flag specifying reverse sort order (default is False)
 
     Returns:
-        list of either hashable keys or integer indices corresponding to the
-        items of iterable in sorted order
+        list of either hashable keys or integer indices corresponding to
+        the items of iterable in sorted order
 
     Raises:
-        TypeError: if passed an iterator or a collection type that does not
-            support subscripting (e.g., sets)
+        TypeError: if passed an iterator or a collection type that does
+            not support subscripting (e.g., sets)
 
     Examples:
 
@@ -237,10 +346,10 @@ def argmin(
         iterable: object for which the minimum item is to be determined
 
     Keyword Arguments:
-        key: single-argument callable which will be applied to each item and
-            the result of which will be used to determine relative ordering
-            of the items (optional; default is None, resulting in the use
-            of each item unmodified)
+        key: single-argument callable which will be applied to each item
+            and the result of which will be used to determine relative
+            ordering of the items (optional; default is None, resulting
+            in the use of each item unmodified)
 
     Returns:
         index of the minimum item in the iterable

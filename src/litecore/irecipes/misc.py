@@ -1,3 +1,6 @@
+"""Miscellaneous functions acting on iterators and iterables.
+
+"""
 import itertools
 
 from typing import (

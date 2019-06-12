@@ -1,4 +1,4 @@
-"""Functions for joins of mappings on common keys.
+"""Functions for joins between mappings on keys.
 
 """
 from typing import (
