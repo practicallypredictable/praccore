@@ -1,7 +1,6 @@
 """Functions for flattening iterables at various depth levels.
 
 """
-import collections
 import itertools
 
 from typing import (
@@ -18,10 +17,11 @@ from typing import (
 def flatten(iterables: Iterable[Iterable[Any]]) -> Iterator[Any]:
     """Flatten an iterable of iterables into one consecutive iterator.
 
-    Only flattens one level of iterables.
+    Only flattens one level (i.e., items which are themselves iterable
+    will be unaffected).
 
     Arguments:
-        iterables: iterable of iterable objects with items to be flattened
+        iterables: iterable of iterables with items to be flattened
 
     Returns:
         iterator of the consecutive items of the underlying iterables
@@ -41,11 +41,11 @@ def flatmap(
         func: Callable[[Any], Any],
         iterable: Iterable[Any],
 ) -> Iterator[Any]:
-    """Map a function to items of an iterable and flatten the result.
+    """Apply a function to items of an iterable and flatten the result.
 
     Arguments:
-        func: single-argument callable to be mapped to items of the iterable
-        iterable: iterable object with items to be flattened
+        func: single-argument callable to be applied to each item
+        iterable: object with items to be flattened
 
     Examples:
 
@@ -70,24 +70,22 @@ def deepflatten(
         iterable: Iterable[Any],
         *,
         maxdepth: Optional[int] = None,
-        primitives: Optional[Tuple[Type, ...]] = None,
+        exclude_types: Optional[Tuple[Type, ...]] = None,
 ) -> Iterator[Any]:
     """Non-recursively flatten a multi-level iterable into one iterator.
 
-    To avoid hitting the recursion depth limit, ignore_types will always be
-    treated to include str and bytes. These will implicitly be added to
-    whatever sequence is provided by the caller (including None). See the
-    Examples.
+    To avoid hitting the recursion depth limit, ignore_types will always
+    implicitly include str, bytes and bytearray.
 
     Arguments:
         iterable: iterable object with items to be flattened
 
     Keyword Arguments:
-        maxdepth: limit on number of levels to flatten (optional; default is
-            None, signifying no limit to structure depth)
-        primitives: tuple of types which will not be flattened (optional;
-            default of None signifies str and bytes, which are implicitly
-            included in any set of primitives which will not be flattened)
+        maxdepth: limit on number of levels to flatten (optional; the
+            default is None, signifying no limit to structure depth)
+        exclude_types: tuple of types which will be included in results
+            unaffected (optional; default is None; implicitly includes
+            str, bytes and bytearray)
 
     Yields:
         consecutive items of the flattened iterable
@@ -98,59 +96,152 @@ def deepflatten(
     [0, 1, 0, 1, 2, 0, 1, 2, 3, 0, 1, 2, 3, 4]
     >>> list(deepflatten([range(3), 'abc', range(3), 'def']))
     [0, 1, 2, 'abc', 0, 1, 2, 'def']
+    >>> d = {1: 'a', 2: 'b', 3: 'c', 4: 'd', 5: 'e', 6: 'f'}
+    >>> d.update({7: d})
+    >>> list(deepflatten(d.items()))
+    [1, 'a', 2, 'b', 3, 'c', 4, 'd', 5, 'e', 6, 'f', 7, 1, 2, 3, 4, 5, 6, 7]
     >>> from collections import namedtuple
     >>> Record = namedtuple('Record', 'name age address')
-    >>> n = Record(name='Joe', age=25, address='123 W. 45th St')
-    >>> list(deepflatten(['abc', n, 'def']))
+    >>> emp = Record(name='Joe', age=25, address='123 W. 45th St')
+    >>> list(deepflatten(['abc', emp, 'def']))
     ['abc', 'Joe', 25, '123 W. 45th St', 'def']
-    >>> list(deepflatten(['abc', n, 'def'], primitives=(tuple,)))
+    >>> list(deepflatten(['abc', emp, 'def'], exclude_types=(tuple,)))
     ['abc', Record(name='Joe', age=25, address='123 W. 45th St'), 'def']
-    >>> items = [1, [2, (3, 4), {(5, 6): 'abc'}, 7], 8]
-    >>> list(deepflatten(items))
+    >>> mixed = [1, [2, (3, 4), {(5, 6): 'abc'}, 7], 8]
+    >>> list(deepflatten(mixed))
     [1, 2, 3, 4, 5, 6, 7, 8]
-    >>> list(deepflatten(items, primitives=(tuple,)))
+    >>> list(deepflatten(mixed, exclude_types=(tuple,)))
     [1, 2, (3, 4), (5, 6), 7, 8]
-    >>> list(deepflatten(items, primitives=(tuple, dict)))
+    >>> list(deepflatten(mixed, exclude_types=(tuple, dict)))
     [1, 2, (3, 4), {(5, 6): 'abc'}, 7, 8]
     >>> recursive = list(range(5))
     >>> recursive.append(recursive)
-    >>> list(deepflatten(recursive))
-    [0, 1, 2, 3, 4, [0, 1, 2, 3, 4, [...]]]
+    >>> recursive == list(deepflatten(recursive))
+    True
 
     """
     seen = set()
     saw = seen.add
-    stack = collections.deque()
+    saw(id(iterable))
+    stack = []
     push_stack = stack.append
     pop_stack = stack.pop
-    push_stack(iter(iterable))
-    saw(id(iterable))
-    while stack:
-        iterator = pop_stack()
-        while True:
-            try:
-                item = next(iterator)
-            except StopIteration:
-                break
+    iterator = iter(iterable)
+    while True:
+        try:
+            item = next(iterator)
+        except StopIteration:
+            if stack:
+                iterator = pop_stack()
+                continue
             else:
-                is_chars = isinstance(item, (str, bytes, bytearray))
-                if not is_chars:
+                return
+        else:
+            deeper = not isinstance(item, (str, bytes, bytearray))
+            if deeper and exclude_types is not None:
+                deeper = not isinstance(item, exclude_types)
+            if deeper and maxdepth is not None:
+                deeper = len(stack) < maxdepth
+        if not deeper:
+            yield item
+        else:
+            try:
+                child_iterator = iter(item)
+            except TypeError:
+                yield item
+            else:
+                if id(item) not in seen:
                     try:
-                        iter(item)
+                        hash(item)
                     except TypeError:
-                        is_iterable = False
-                    else:
-                        is_iterable = True
-                if primitives is not None and not is_chars and is_iterable:
-                    do_not_iterate = isinstance(item, primitives)
+                        saw(id(item))
+                    push_stack(iterator)
+                    iterator = child_iterator
                 else:
-                    do_not_iterate = is_chars or not is_iterable
-                if do_not_iterate or id(item) in seen:
                     yield item
-                else:
-                    saw(id(item))
-                    if maxdepth is None or len(stack) < maxdepth:
-                        push_stack(iterator)
-                        iterator = iter(item)
-                    else:
-                        yield item
+
+
+def deepflatten_recursive(
+        iterable: Iterable[Any],
+        *,
+        maxdepth: Optional[int] = None,
+        exclude_types: Optional[Tuple[Type, ...]] = None,
+        _depth=None,
+        _seen=None,
+) -> Iterator[Any]:
+    """Recursively flatten a multi-level iterable into one iterator.
+
+    To avoid hitting the recursion depth limit, ignore_types will always
+    implicitly include str, bytes and bytearray.
+
+    Arguments:
+        iterable: iterable object with items to be flattened
+
+    Keyword Arguments:
+        maxdepth: limit on number of levels to flatten (optional; the
+            default is None, signifying no limit to structure depth)
+        exclude_types: tuple of types which will be included in results
+            unaffected (optional; default is None; implicitly includes
+            str, bytes and bytearray)
+
+    Yields:
+        consecutive items of the flattened iterable
+
+    Examples:
+
+    >>> list(deepflatten_recursive([range(2), [range(3), range(4)], range(5)]))
+    [0, 1, 0, 1, 2, 0, 1, 2, 3, 0, 1, 2, 3, 4]
+    >>> list(deepflatten_recursive([range(3), 'abc', range(3), 'def']))
+    [0, 1, 2, 'abc', 0, 1, 2, 'def']
+    >>> d = {1: 'a', 2: 'b', 3: 'c', 4: 'd', 5: 'e', 6: 'f'}
+    >>> d.update({7: d})
+    >>> list(deepflatten_recursive(d.items()))
+    [1, 'a', 2, 'b', 3, 'c', 4, 'd', 5, 'e', 6, 'f', 7, 1, 2, 3, 4, 5, 6, 7]
+    >>> from collections import namedtuple
+    >>> Record = namedtuple('Record', 'name age address')
+    >>> emp = Record(name='Joe', age=25, address='123 W. 45th St')
+    >>> list(deepflatten_recursive(['abc', emp, 'def']))
+    ['abc', 'Joe', 25, '123 W. 45th St', 'def']
+    >>> list(deepflatten_recursive(['abc', emp, 'def'], exclude_types=(tuple,)))
+    ['abc', Record(name='Joe', age=25, address='123 W. 45th St'), 'def']
+    >>> mixed = [1, [2, (3, 4), {(5, 6): 'abc'}, 7], 8]
+    >>> list(deepflatten_recursive(mixed))
+    [1, 2, 3, 4, 5, 6, 7, 8]
+    >>> list(deepflatten_recursive(mixed, exclude_types=(tuple,)))
+    [1, 2, (3, 4), (5, 6), 7, 8]
+    >>> list(deepflatten_recursive(mixed, exclude_types=(tuple, dict)))
+    [1, 2, (3, 4), {(5, 6): 'abc'}, 7, 8]
+    >>> recursive = list(range(5))
+    >>> recursive.append(recursive)
+    >>> recursive == list(deepflatten_recursive(recursive))
+    True
+
+    """
+    if _depth is None:
+        _depth = 0
+    if _seen is None:
+        _seen = set()
+        _seen.add(id(iterable))
+    for item in iterable:
+        try:
+            iter(item)
+        except TypeError:
+            deeper = False
+        else:
+            deeper = not isinstance(item, (str, bytes, bytearray))
+            if deeper and exclude_types is not None:
+                deeper = not isinstance(item, exclude_types)
+            if deeper and maxdepth is not None:
+                deeper = _depth < maxdepth
+        if deeper and id(item) not in _seen:
+            _seen.add(id(item))
+            yield from deepflatten_recursive(
+                item,
+                maxdepth=maxdepth,
+                exclude_types=exclude_types,
+                _depth=_depth + 1,
+                _seen=_seen,
+            )
+            _seen.remove((id(item)))
+        else:
+            yield item

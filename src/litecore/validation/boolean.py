@@ -1,56 +1,64 @@
-import typing
+from typing import (
+    Any,
+    Tuple,
+)
 
-import litecore.validate.base as base
-import litecore.validate.exceptions as exc
+import litecore.validation.base as base
+import litecore.validation.exceptions as exc
 
-TRUE_CASEFOLDED_VALUES = ('true', 'yes', 'y', 'on')
-FALSE_CASEFOLDED_VALUES = ('false', 'no', 'n', 'off')
+DEFAULT_TRUE_STRINGS = ('true', 't', 'yes', 'y', 'on', '1', 'enable')
+DEFAULT_FALSE_STRINGS = ('false', 'f', 'no', 'n', 'off', '0', 'null', 'disable')
 
 
 class Boolean(base.Simple):
+    """Validates boolean values and common string synonyms.
+
+    Examples:
+
+    >>> v = Boolean(coerce=True)
+    >>> v(False)
+    False
+    >>> v('Y')
+    True
+    >>> v('0')
+    False
+    >>> v('On')
+    True
+    >>> v(None)  # doctest: +ELLIPSIS
+    Traceback (most recent call last):
+     ...
+    litecore...ValidationTypeError: value None incompatible with <class 'bool'> ...
+    >>> Boolean(nullable=True)(None)
+
+    """
+    __slots__ = base.get_slots(base.Simple) + (
+        'true_strings',
+        'false_strings',
+    )
+    default_coerce_type = bool
+
     def __init__(
             self,
             *,
-            coerce_string: bool = False,
-            true_strings=TRUE_CASEFOLDED_VALUES,
-            false_strings=FALSE_CASEFOLDED_VALUES,
+            true_strings: Tuple[str] = DEFAULT_TRUE_STRINGS,
+            false_strings: Tuple[str] = DEFAULT_FALSE_STRINGS,
             **kwargs,
     ):
         super().__init__(**kwargs)
-        self.register_params(('coerce_string',))
-        self.coerce_string = coerce_string
-        self._true_values = true_strings
-        self._false_values = false_strings
+        self.true_strings = set(s.casefold() for s in true_strings)
+        self.false_strings = set(s.casefold() for s in false_strings)
 
-    def _bool_fallback(self, value: typing.Any) -> bool:
-        if isinstance(value, str) and self.coerce_string:
-            value = value.casefold()
-            if value in self._true_values:
+    def _validate(self, value: Any) -> None:
+        if not isinstance(value, bool):
+            raise exc.ValidationTypeError(value, self, bool)
+        return super()._validate(value)
+
+    def _coerce_value(self, value: Any) -> bool:
+        if isinstance(value, int):
+            return bool(value)
+        if isinstance(value, str):
+            if value.casefold() in self.true_strings:
                 return True
-            elif value in self._false_values:
+            elif value.casefold() in self.false_strings:
                 return False
-            else:
-                msg = f'cannot convert unrecognized value {value!r} to bool'
-                raise exc.SpecifiedValueError(
-                    msg,
-                    constraint=self._true_values + self._false_values,
-                    actual=value,
-                )
-        msg = f'expected bool; got value {value!r}'
-        raise exc.InvalidTypeError(
-            msg,
-            expected=bool,
-            actual=type(value),
-        )
-
-    def detailed_validation(self, value: typing.Any) -> typing.Any:
-        value = super().detailed_validation(value)
-        value = super().check_type(
-            value,
-            bool,
-            fallback=self._bool_fallback,
-        )
-        return value
-
-
-base.register(bool, Boolean)
+        raise exc.ValidationTypeError(value, self, self.coerce_type)

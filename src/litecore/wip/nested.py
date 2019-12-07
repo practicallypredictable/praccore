@@ -20,7 +20,7 @@ from typing import (
 )
 
 import litecore.utils
-from litecore.sentinels import NO_VALUE
+from litecore.sentinels import NO_VALUE as _NO_VALUE
 
 # TODO: fix str()?
 
@@ -53,7 +53,7 @@ class ClassMarkerFlag(enum.Flag):
         elif isinstance(obj, collections.abc.Mapping):
             return cls.MAPPING
         elif litecore.utils.is_iterable(obj):
-            if litecore.utils.is_charts(obj):
+            if litecore.utils.is_chars(obj):
                 return cls.NONE
             elif primitives is not None and isinstance(obj, primitives):
                 return cls.NONE
@@ -430,7 +430,7 @@ def recursive_equality(
     return all(x == y for x, y in itertools.zip_longest(
         one_items,
         other_items,
-        fillvalue=NO_VALUE,
+        fillvalue=_NO_VALUE,
     ))
 
 

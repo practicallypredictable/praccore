@@ -47,7 +47,7 @@ def iter_items(container: ItemsCollection) -> Iterator[Tuple[ST, T]]:
 
     Returns:
         iterator of tuples for each item of the iterable, where the
-        second omponent of the tuple is the item and first component of
+        second component of the tuple is the item and first component of
         the tuple is the subscript that would get the item from the
         iterable (i.e., item = iterable[subscript])
 

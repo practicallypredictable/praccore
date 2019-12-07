@@ -80,4 +80,3 @@ def _pickler(sentinel: _Sentinel):
 
 
 copyreg.pickle(_Sentinel, _pickler, _unpickler)
-NO_VALUE = create('NO_VALUE')

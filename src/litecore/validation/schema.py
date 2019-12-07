@@ -1,202 +1,133 @@
 import collections
-import copy
-import logging
-import typing
 
-import litecore.validate.base as base
-import litecore.validate.exceptions as exc
+from typing import (
+    Any,
+    Callable,
+    Hashable,
+    Mapping,
+    NoReturn,
+    Tuple,
+    Type,
+    Union,
+)
 
-log = logging.getLogger(__name__)
+import litecore.validation.base as base
+import litecore.validation.exceptions as exc
+import litecore.sentinels
+import litecore.utils
 
+NO_VALUE = litecore.sentinels.create('NO_VALUE')
 
-def _validate_mapping(schema, value, *, unknown_keys_hook, errors=None, _memo=None):
-    if errors is None:
-        errors = {}
-    keys_seen = set()
-    item_keys = []
-    item_values = []
-    for item_key, item_value in value.items():
-        keys_seen.add(item_key)
-        if item_key in schema:
-            try:
-                item_value = schema[item_key].validate(item_value)
-            except exc.ValidationError as err:
-                errors[item_key] = err
-                item_value = exc.FailedMarker(item_value)
-        else:
-            try:
-                new_key, new_value = unknown_keys_hook(
-                    item_key,
-                    item_value,
-                )
-            except KeyError:
-                key_error = exc.ForbiddenKeyError(
-                    schema=schema,
-                    key=item_key,
-                )
-                errors[item_key] = key_error
-                item_key = exc.FailedMarker(item_key)
-            if new_key is None:
-                continue
-            else:
-                item_key = new_key
-                item_value = new_value
-        item_keys.append(item_key)
-        item_values.append(item_value)
-    for schema_key, schema_value in schema.items():
-        if schema_key in keys_seen:
-            continue
-        if isinstance(schema_value, OptionalKey):
-            default = schema_value.default
-            try:
-                schema_value = schema_value.validator.validate(default)
-            except exc.ValidationError as err:
-                errors[schema_key] = err
-                schema_value = exc.FailedMarker(schema_value)
-            item_keys.append(schema_key)
-            item_values.append(schema_value)
-        else:
-            key_error = exc.MissingKeyError(
-                schema=schema,
-                key=schema_key,
-            )
-            errors[schema_key] = key_error
-    assert len(item_keys) == len(item_values)
-    return zip(item_keys, item_values), errors
+default_factory = litecore.utils.constant_factory
 
 
 class OptionalKey(base.Validator):
+    __slots__ = base.get_slots(base.Validator) + (
+        'validator',
+        'default_factory',
+    )
+
     def __init__(
             self,
-            validator,
             *,
-            default: typing.Optional[typing.Any] = None,
+            validator: base.ValidatorType,
+            default_factory: Callable[[], Any],
             **kwargs,
-    ) -> None:
+    ):
+        try:
+            validator(default_factory())
+        except Exception as err:
+            msg = f'default factory value failed validation'
+            raise RuntimeError(msg) from err
         super().__init__(**kwargs)
-        self._register_params((
-            'validator',
-            'default',
-        ))
         self.validator = validator
-        if default is not None and not callable(default):
-            default = copy.deepcopy(default)
-        self._default = default
+        self.default_factory = default_factory
 
     @property
-    def default(self) -> typing.Any:
-        if callable(self._default):
-            return self._default()
-        else:
-            return self._default
+    def default(self) -> Any:
+        return self.default_factory()
 
-    def preemptive_validation(self, value: typing.Any) -> bool:
-        return self.validator.preemptive_validation(value)
-
-    def detailed_validation(self, value: typing.Any) -> typing.Any:
-        return self.validator.detailed_validation(value)
+    def _validate(self, value: Any) -> Any:
+        value = self.validator(value)
+        return super()._validate(value)
 
 
-def forbid_unknown_keys(key: typing.Hashable, value: typing.Any):
-    raise KeyError()
+UnknownKeyReturnType = Union[NoReturn, Tuple[str, Any], Tuple[None, None]]
+UnknownKeyHook = Callable[[Tuple[str, Any]], UnknownKeyReturnType]
 
 
-def include_unknown_keys(key: typing.Hashable, value: typing.Any):
+def raise_unknown_keys(key: str, value: Any) -> NoReturn:
+    msg = f'key {key!r} with value {value!r} is forbidden'
+    raise KeyError(msg)
+
+
+def include_unknown_keys(key: str, value: Any) -> Tuple[str, Any]:
     return key, value
 
 
-def exclude_unknown_keys(key: typing.Hashable, value: typing.Any):
+def exclude_unknown_keys(key: str, value: Any) -> Tuple[None, None]:
     return None, None
 
 
-class Schema(base.Nullable):
+@base.abstractslots(base.combine_slots(base.Validator))
+class Schema(base.Validator):
+    __slots__ = ()
+
+
+class MappingSchema(Schema):
+    __slots__ = base.get_slots(Schema) + (
+        'schema',
+        'unknown_key_hook',
+        'factory',
+    )
+
     def __init__(
-            self,
-            schema: typing.Mapping,
-            *,
-            unknown_keys_hook: typing.Callable = forbid_unknown_keys,
-            mapping_factory: typing.Type = dict,
-            **kwargs,
+        self,
+        *,
+        schema: Mapping[str, Any],
+        unknown_key_hook: UnknownKeyHook = raise_unknown_keys,
+        factory: Type[Mapping] = dict,
+        **kwargs,
     ):
+        if not isinstance(schema, collections.abc.Mapping):
+            raise TypeError()
         super().__init__(**kwargs)
-        self._register_params((
-            'schema',
-            'unknown_keys_hook',
-            'mapping_factory',
-        ))
         self.schema = schema
-        self.unknown_keys_hook = unknown_keys_hook
-        self.mapping_factory = mapping_factory
 
-    def preemptive_validation(self, value: typing.Any) -> bool:
-        if super().preemptive_validation(value):
-            return value
+    def _validate(self, value: Mapping[Hashable, Any]) -> Mapping[Hashable, Any]:
         if not isinstance(value, collections.abc.Mapping):
-            raise exc.InvalidTypeError(
-                expected=collections.abc.Mapping,
-                actual=type(value),
-            )
-        return False
-
-    def detailed_validation(self, value: typing.Any) -> typing.Any:
-        top_level_errors = []
-        errors = {}
+            raise TypeError()
         keys_seen = set()
-        item_keys = []
-        item_values = []
-        for item_key, item_value in value.items():
-            keys_seen.add(item_key)
-            if item_key in self.schema:
+        saw = keys_seen.add
+        validated = []
+        for key, value in value.items():
+            saw(key)
+            if key not in self.schema:
                 try:
-                    item_value = self.schema[item_key].validate(item_value)
-                except exc.ValidationError as err:
-                    errors[item_key] = err
-                    item_value = exc.FailedMarker(item_value)
-            else:
-                try:
-                    new_key, new_value = self.unknown_keys_hook(
-                        item_key,
-                        item_value,
-                    )
-                except KeyError:
-                    key_error = exc.ForbiddenKeyError(
-                        schema=self.schema,
-                        key=item_key,
-                    )
-                    errors[item_key] = key_error
-                    item_key = exc.FailedMarker(item_key)
-                if new_key is None:
+                    key, value = self.unknown_keys_hook(key, value)
+                except Exception as err:
+                    raise exc.ValidationError() from err
+                if key is None:
                     continue
-                else:
-                    item_key = new_key
-                    item_value = new_value
-            item_keys.append(item_key)
-            item_values.append(item_value)
-        for schema_key, schema_value in self.schema.items():
-            if schema_key in keys_seen:
-                continue
-            if isinstance(schema_value, OptionalKey):
-                default = schema_value.default
-                try:
-                    schema_value = schema_value.validator.validate(default)
-                except exc.ValidationError as err:
-                    errors[schema_key] = err
-                    schema_value = exc.FailedMarker(schema_value)
-                item_keys.append(schema_key)
-                item_values.append(schema_value)
             else:
-                key_error = exc.MissingKeyError(
-                    schema=self.schema,
-                    key=schema_key,
-                )
-                errors[schema_key] = key_error
-        assert len(item_keys) == len(item_values)
-        results = self.mapping_factory(zip(item_keys, item_values))
-        if errors or top_level_errors:
-            raise exc.MultiValidationError(
-                value=value,
-                top_level_errors=top_level_errors,
-                underlying_errors=errors,
-                results=results,
-            )
-        return results
+                validator = self.schema[key]
+                if isinstance(validator, base.Validator):
+                    try:
+                        value = validator(value)
+                    except exc.ValidationError as err:
+                        raise exc.ValidationError() from err
+                elif isinstance(validator, type):
+                    if not isinstance(value, validator):
+                        raise exc.ValidationError()
+                else:
+                    if value != validator:
+                        raise exc.ValidationError()
+                validated.append((key, value))
+        for key, validator in self.schema.items():
+            if key in keys_seen:
+                continue
+            if isinstance(validator, OptionalKey):
+                validated.append((key, validator.default))
+            else:
+                raise KeyError()
+        return super()._validate(validated)

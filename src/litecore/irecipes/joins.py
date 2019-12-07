@@ -31,7 +31,8 @@ def inner_join(
     (4, 'Dierdre', 'CTO', 60000)
 
     """
-    for key in set(first.keys()).intersection(*[m.keys() for m in others]):
+    keys = set(first.keys()).intersection(*[m.keys() for m in others])
+    for key in keys:
         yield (key, first[key], *[other[key] for other in others])
 
 

@@ -11,10 +11,10 @@ from typing import (
 
 import litecore.irecipes.common as _common
 
-from litecore import LitecoreError
+from litecore import LitecoreError as _ErrorBase
 
 
-class IteratorBoundError(LitecoreError, RuntimeError):
+class IteratorBoundError(_ErrorBase, RuntimeError):
     """Reached limit of number of items consumed from an iterator."""
 
 

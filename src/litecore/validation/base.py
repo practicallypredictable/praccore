@@ -1,293 +1,382 @@
 import abc
-import copy
-import logging
-import re
-import typing
+import itertools
+import math
+import operator
 
-import litecore.validate.exceptions as exc
+from typing import (
+    Any,
+    Callable,
+    ClassVar,
+    Dict,
+    Optional,
+    Tuple,
+    Type,
+    TypeVar,
+)
 
-log = logging.getLogger(__name__)
-_validator_type_registry = {}
+import litecore.validation.exceptions as exc
+
+ValidatorType = TypeVar('ValidatorType', bound='Validator')
+
+_abstract_slots: Dict[Type[ValidatorType], Tuple[str, ...]] = {}
+register_slots = _abstract_slots.__setitem__
+get_slots = _abstract_slots.__getitem__
 
 
+def combine_slots(*classes) -> Tuple[str, ...]:
+    slots = itertools.chain.from_iterable(
+        get_slots(cls) for cls in classes)
+    return tuple(slots)
+
+
+def abstractslots(slots: Tuple[str, ...] = ()):
+    def decorator(cls):
+        register_slots(cls, slots)
+        return cls
+    return decorator
+
+
+@abstractslots(('hook',))
 class Validator(abc.ABC):
-    preempt_validation = False
+    __slots__ = ()
 
     def __init__(
             self,
             *,
-            post_validation_hook: typing.Optional[typing.Callable] = None,
-    ) -> None:
-        self._params = ('post_validation_hook',)
-        self.post_validation_hook = post_validation_hook
-
-    def register_params(self, params: typing.Iterable[str]) -> None:
-        if __debug__:
-            if any(param in self._params for param in params):
-                msg = (
-                    f'Attempt to register new params {params} '
-                    f'clashes with existing params {self._params}'
-                )
-                raise ValueError(msg)
-        self._params = self._params + params
-
-    def validate(self, value: typing.Any) -> typing.Any:
-        if type(self).preempt_validation and self.preemptive_validation(value):
-            return value
-        value = self.detailed_validation(value)
-        if self.post_validation_hook is not None:
-            value = self.post_validation_hook(value)
-        return value
-
-    __call__ = validate
-
-    def preemptive_validation(self, value: typing.Any) -> bool:
-        return False
+            hook: Optional[Callable[[Any], Any]] = None,
+            **kwargs,
+    ):
+        if hook is not None and not callable(hook):
+            raise TypeError('hook must be callable')
+        super().__init__(**kwargs)
+        self.hook = hook
 
     @abc.abstractmethod
-    def detailed_validation(self, value: typing.Any) -> typing.Any:
-        raise NotImplementedError()
+    def _validate(self, value: Any) -> Any:
+        if self.hook is not None:
+            try:
+                value = self.hook(value)
+            except Exception as err:
+                raise exc.ExtraValidationError(value, self, err) from err
+        return value
+
+    def __call__(self, value: Any):
+        return self._validate(value)
 
     @property
-    def params(self) -> typing.Iterator[typing.Tuple[str, typing.Any]]:
-        for param in self._params:
-            value = getattr(self, param)
-            if value:
-                yield param, value
+    def params(self) -> Tuple[str, ...]:
+        return tuple(
+            slot for slot in type(self).__slots__
+            if not slot.startswith('_')
+        )
 
-    def __repr__(self) -> str:
-        params = ', '.join(f'{param}={value}' for param, value in self.params)
+    @property
+    def param_items(self) -> Tuple[Tuple[str, Any], ...]:
+        items = ((item, getattr(self, item)) for item in self.params)
+        return tuple(items)
+
+    def __repr__(self):
+        params = ', '.join(f'{k}={v}' for k, v in self.param_items)
         return f'{type(self).__name__}({params})'
 
-    def __eq__(self, other: typing.Any) -> bool:
+    def __eq__(self, other: ValidatorType):
         if not isinstance(other, type(self)):
-            return False
-        return tuple(self.params) == tuple(other.params)
+            return NotImplemented
+        return self.param_items == other.param_items
 
-    # TODO: pickling, serialization
-    # https://bitbucket.org/cottonwood-tech/validx/src/9289d87a5b31c29de279370b8486aaae9f4be0aa/validx/py/abstract.py?at=default&fileviewer=file-view-default
+    def __hash__(self):
+        return hash((type(self).__name__, self.param_items))
+
+    def clone(self, **kwargs) -> ValidatorType:
+        params = dict(self.param_items)
+        params.update(kwargs)
+        return type(self)(**params)
 
 
 class Anything(Validator):
-    preempt_validation = True
+    """Accepts any value.
 
-    def preemptive_validation(self, value: typing.Any) -> bool:
-        return True
+    Examples:
 
-    def detailed_validation(self, value: typing.Any) -> typing.Any:
-        return value
+    >>> validator = Anything()
+    >>> validator
+    Anything(hook=None)
+    >>> validator(None)
+    >>> validator(0)
+    0
+    >>> validator('test')
+    'test'
+
+    """
+    __slots__ = get_slots(Validator)
+
+    def _validate(self, value: Any) -> None:
+        return super()._validate(value)
 
 
 class Constant(Validator):
-    preempt_validation = True
+    """Rejects values other than a single specified value.
 
-    def __init__(self, *, value: typing.Any, **kwargs) -> None:
+    Examples:
+
+    >>> validator = Constant(value=42)
+    >>> validator
+    Constant(hook=None, value=42)
+    >>> validator(42)
+    42
+    >>> validator(None)  # doctest: +ELLIPSIS
+    Traceback (most recent call last):
+     ...
+    litecore...ConstantError: value must equal 42; got None
+    >>> validator(0)  # doctest: +ELLIPSIS
+    Traceback (most recent call last):
+     ...
+    litecore...ConstantError: value must equal 42; got 0
+    >>> validator('test')  # doctest: +ELLIPSIS
+    Traceback (most recent call last):
+     ...
+    litecore...ConstantError: value must equal 42; got 'test'
+
+    """
+    __slots__ = get_slots(Validator) + ('value',)
+
+    def __init__(self, *, value: Any, **kwargs):
         super().__init__(**kwargs)
-        self.register_params(('value',))
         self.value = value
 
-    def preemptive_validation(self, value: typing.Any) -> bool:
+    def _validate(self, value: Any) -> Any:
         if value != self.value:
-            msg = f'value must equal constant {self.value!r}'
-            raise exc.SpecifiedValueError(
-                msg,
-                expected=self.value,
-                actual=value,
-            )
-        return True
-
-    def detailed_validation(self, value: typing.Any) -> typing.Any:
-        return value
+            raise exc.ConstantError(value, self)
+        return super()._validate(value)
 
 
-class Range(Validator):
+class Between(Validator):
+    """Rejects values outside of specified bounds.
+
+    Bounds can be non-numeric (e.g., strings), as long as the standard
+    comparison operators work.
+
+    Examples:
+
+    >>> validator = Between(lower=10, upper=30)
+    >>> validator
+    Between(hook=None, lower=10, upper=30, lower_inclusive=True, upper_inclusive=True)
+    >>> validator(9.99)
+    Traceback (most recent call last):
+     ...
+    litecore.validation.exceptions.LowerBoundError: value 9.99 not >= lower bound 10
+    >>> validator(10)
+    10
+    >>> validator(25.5)
+    25.5
+    >>> validator(30)
+    30
+    >>> validator(42)
+    Traceback (most recent call last):
+     ...
+    litecore.validation.exceptions.UpperBoundError: value 42 not <= upper bound 30
+    >>> validator(None)  # doctest: +ELLIPSIS
+    Traceback (most recent call last):
+     ...
+    litecore...ValidationTypeError: value None incompatible with <class 'int'> ...
+    >>> validator(float('inf'))  # doctest: +ELLIPSIS
+    Traceback (most recent call last):
+     ...
+    litecore.validation.exceptions.UpperBoundError: value inf not <= upper bound 30
+    >>> validator(float('-inf'))  # doctest: +ELLIPSIS
+    Traceback (most recent call last):
+     ...
+    litecore.validation.exceptions.LowerBoundError: value -inf not >= lower bound 10
+    >>> validator(float('nan'))  # doctest: +ELLIPSIS
+    Traceback (most recent call last):
+     ...
+    litecore...NaNError: value nan rejected by validator ...
+    >>> validator('42')  # doctest: +ELLIPSIS
+    Traceback (most recent call last):
+     ...
+    litecore...ValidationTypeError: value '42' incompatible with <class 'int'> ...
+    >>> first_half_alphabet = Between(lower='A', upper='M')
+    >>> first_half_alphabet('B')
+    'B'
+    >>> first_half_alphabet('P')
+    Traceback (most recent call last):
+     ...
+    litecore.validation.exceptions.UpperBoundError: value 'P' not <= upper bound 'M'
+    >>> v2 = Between(lower=10, lower_inclusive=False)
+    >>> v2(10)
+    Traceback (most recent call last):
+     ...
+    litecore.validation.exceptions.LowerBoundError: value 10 not > lower bound 10
+    >>> v2(float('inf'))
+    inf
+    >>> v2(float('nan'))  # doctest: +ELLIPSIS
+    Traceback (most recent call last):
+     ...
+    litecore...NaNError: value nan rejected by validator ...
+    >>> v3 = Between(upper=30, upper_inclusive=False)
+    >>> v3(30)
+    Traceback (most recent call last):
+     ...
+    litecore.validation.exceptions.UpperBoundError: value 30 not < upper bound 30
+    >>> v3(float('-inf'))
+    -inf
+    >>> v3(float('nan'))  # doctest: +ELLIPSIS
+    Traceback (most recent call last):
+     ...
+    litecore...NaNError: value nan rejected by validator ...
+
+    """
+    __slots__ = get_slots(Validator) + (
+        'lower',
+        'upper',
+        'lower_inclusive',
+        'upper_inclusive',
+        '_fail_lower',
+        '_fail_upper',
+    )
+
     def __init__(
         self,
         *,
-        min_value: typing.Optional[int] = None,
-        max_value: typing.Optional[int] = None,
+        lower: Optional[Any] = None,
+        upper: Optional[Any] = None,
+        lower_inclusive: bool = True,
+        upper_inclusive: bool = True,
         **kwargs,
     ) -> None:
-        super().__init__(**kwargs)
-        if __debug__:
-            if min_value is not None:
-                min_value = int(min_value)
-                if min_value < 0:
-                    msg = f'min argument must be positive'
-                    raise ValueError(msg)
-            if max_value is not None:
-                max_value = int(max_value)
-                if max_value < 0:
-                    msg = f'max argument must be positive'
-                    raise ValueError(msg)
-                elif min_value is not None and max_value < min_value:
-                    msg = f'max argument cannot be less than min argument'
-                    raise ValueError(msg)
-        self.register_params(('min_value', 'max_value'))
-        self.min_value = min_value
-        self.max_value = max_value
-
-    def detailed_validation(self, value: typing.Any) -> typing.Any:
-        if self.min_value is not None and value < self.min_value:
-            raise exc.RangeError(constraint=self, value=value)
-        if self.max_value is not None and value > self.max_value:
-            raise exc.RangeError(constraint=self, value=value)
-        return value
-
-
-class OneOf(Validator):
-    def __init__(
-        self,
-        values: typing.Iterable[typing.Any],
-        **kwargs,
-    ) -> None:
-        super().__init__(**kwargs)
-        values = set(values)
-        if __debug__:
-            if len(values) < 1:
-                msg = f'must provide at least one value'
+        if lower is not None and upper is not None:
+            try:
+                valid = upper > lower
+            except Exception as err:
+                msg = f'upper and lower bounds must support comparison'
+                raise TypeError(msg) from err
+            if not valid:
+                msg = f'upper bound must be greater than lower bound'
                 raise ValueError(msg)
-        self.register_params(('values',))
-        self.values: set = set(values)
-
-    def detailed_validation(self, value: typing.Any) -> typing.Any:
-        if self.values and value not in self.values:
-            raise exc.SpecifiedValueError(
-                constraint=self,
-                value=value,
-            )
-        return value
-
-
-class Length(Validator):
-    def __init__(
-        self,
-        *,
-        min_length: typing.Optional[int] = None,
-        max_length: typing.Optional[int] = None,
-        **kwargs,
-    ) -> None:
         super().__init__(**kwargs)
-        self.register_params(('min_length', 'min_length'))
-        self.min_value = min_length
-        self.max_value = min_length
-        self._range = Range(min_value=min_length, max_value=max_length)
+        self.lower = lower
+        self.upper = upper
+        self.lower_inclusive = bool(lower_inclusive)
+        self.upper_inclusive = bool(upper_inclusive)
+        if lower is not None:
+            self._fail_lower = operator.lt if lower_inclusive else operator.le
+        else:
+            self._fail_lower = None
+        if upper is not None:
+            self._fail_upper = operator.gt if upper_inclusive else operator.ge
+        else:
+            self._fail_upper = None
 
-    def detailed_validation(self, value: typing.Any) -> typing.Any:
+    def _validate(self, value: Any) -> Any:
         try:
-            length = len(value)
-        except TypeError as err:
-            msg = 'Attempt to validate value {value!r} with no length'
-            raise exc.ValidationError(msg) from err
-        try:
-            return self._range(length)
-        except exc.RangeError:
-            raise exc.LengthError(constraint=self, value=value)
-        return value
+            if math.isnan(value):
+                raise exc.NaNError(value, self)
+        except TypeError:
+            pass
+        if self._fail_lower is not None:
+            try:
+                fail = self._fail_lower(value, self.lower)
+            except TypeError as err:
+                raise exc.ValidationTypeError(value, self, type(self.lower), err)
+            if fail:
+                raise exc.LowerBoundError(value, self)
+        if self._fail_upper is not None:
+            try:
+                fail = self._fail_upper(value, self.upper)
+            except TypeError as err:
+                raise exc.ValidationTypeError(value, self, type(self.upper), err)
+            if fail:
+                raise exc.UpperBoundError(value, self)
+        return super()._validate(value)
 
 
-class Pattern(Validator):
-    def __init__(
-        self,
-        *,
-        regex: typing.Optional[str] = None,
-        **kwargs,
-    ) -> None:
-        super().__init__(**kwargs)
-        self.register_params(('regex',))
-        self.regex = regex
-        if regex is not None:
-            self._compiled = re.compile(regex)
-
-    def detailed_validation(self, value: typing.Any) -> typing.Any:
-        if self.regex is not None and not re.match(self._compiled, value):
-            raise exc.SpecifiedPatternError(pattern=self.regex, value=value)
-        return value
-
-
+@abstractslots(('nullable',))
 class Nullable(Validator):
-    preempt_validation = True
+    """Abstract base class for nullable validators.
+
+    For a validator to be both Nullable and Coerceable, Nullable should
+    come BEFORE Coerceable in the class declaration.
+
+    """
+    __slots__ = ()
 
     def __init__(
             self,
             *,
             nullable: bool = False,
             **kwargs,
-    ) -> None:
+    ):
         super().__init__(**kwargs)
-        self.register_params(('nullable',))
-        self.nullable = nullable
+        self.nullable = bool(nullable)
 
-    def preemptive_validation(self, value: typing.Any) -> bool:
-        if value is None:
-            if not self.nullable:
-                msg = f'value cannot be None'
-                raise exc.InvalidValueError(msg)
-            else:
-                return True
-        return False
+    def __call__(self, value: Any):
+        if value is None and self.nullable:
+            return value
+        return super().__call__(value)
 
 
-class Simple(Nullable):
+@abstractslots(('coerce', 'coerce_type',))
+class Coerceable(Validator):
+    """Abstract base class for validators allowing coercion.
+
+    """
+    __slots__ = ()
+    default_coerce_type: ClassVar[Optional[Type]] = None
+
     def __init__(
             self,
             *,
-            coerce_to: typing.Optional[typing.Type] = None,
-            fallback_coercion: bool = True,
+            coerce: bool = False,
+            coerce_type: Optional[Type] = None,
             **kwargs,
-    ) -> None:
+    ):
         super().__init__(**kwargs)
-        self.register_params(('coerce_to', 'fallback_coercion'))
-        self.coerce_to = coerce_to
-        self.fallback_coercion = fallback_coercion
+        self.coerce = bool(coerce)
+        self.coerce_type = coerce_type or type(self).default_coerce_type
+        if self.coerce and self.coerce_type is None:
+            msg = f'validator {self!r} has no coercion type set'
+            raise ValueError(msg)
 
-    def detailed_validation(self, value: typing.Any) -> typing.Any:
-        if self.coerce_to is not None:
-            try:
-                return self.coerce_to(value)
-            except (ValueError, TypeError, AttributeError) as err:
-                msg = f'could not coerce value {value!r} to {self.coerce_to!r}'
-                raise exc.CoercionError(
-                    msg,
-                    coerced=self.coerce_to,
-                    value=value,
-                ) from err
-        return value
+    def _coerce_value(self, value: Any) -> Any:
+        try:
+            return self.coerce_type(value)
+        except (TypeError, ValueError) as err:
+            raise exc.CoercionError(value, self, self.coerce_type, err) from err
 
-    def check_type(
-            self,
-            value: typing.Any,
-            expected_type: typing.Type,
-            *,
-            fallback: typing.Optional[typing.Any] = None,
-    ) -> typing.Any:
-        if not isinstance(value, expected_type):
-            if self.fallback_coercion and fallback is not None:
-                if callable(fallback):
-                    value = fallback(value)
-                else:
-                    value = copy.deepcopy(fallback)
-            else:
-                msg = f'expected type {expected_type!r}; got value {value!r}'
-                raise exc.InvalidTypeError(
-                    msg,
-                    expected=expected_type,
-                    actual=type(value),
-                )
+    def __call__(self, value: Any):
+        try:
+            value = self._validate(value)
+        except exc.ValidationError:
+            if not self.coerce:
+                raise
+        if self.coerce and not isinstance(value, self.coerce_type):
+            value = self._coerce_value(value)
         return value
 
 
-def register(type_obj: typing.Type, validator: Validator) -> None:
-    if type_obj in _validator_type_registry:
-        msg = f'type {type_obj!r} already in validator registry'
-        raise ValueError(msg)
-    _validator_type_registry[type_obj] = validator
+@abstractslots(('min_value', 'max_value',))
+class HasBounds(Validator):
+    """Rejects values falling outside a specified range.
+
+    """
+    __slots__ = ()
+
+    def __init__(
+        self,
+        *,
+        between: Optional[Between] = None,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+        self.between = between
+
+    @abc.abstractmethod
+    def _validate(self, value: Any) -> Any:
+        if self.between is not None:
+            value = self.between(value)
+        return super()._validate(value)
 
 
-def get_validator(type_obj: typing.Type) -> typing.Type[Validator]:
-    try:
-        validator_type = _validator_type_registry[type_obj]
-    except KeyError as err:
-        msg = f'no validator for type {type_obj!r}'
-        raise ValueError(msg) from err
-    return validator_type
+@abstractslots(combine_slots(Nullable, Coerceable, Validator))
+class Simple(Nullable, Coerceable, Validator):
+    __slots__ = ()

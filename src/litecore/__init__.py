@@ -10,6 +10,13 @@ log = logging.getLogger(__name__)
 log.addHandler(logging.NullHandler())
 
 
-class LitecoreError(Exception):
-    """Base class for all exceptions raised by this package."""
-    pass
+class LitecoreError(BaseException):
+    """Base class for exceptions raised by this package.
+
+    Errors encountered in the process of creating objects or calling
+    functions in this package will use standard exception types (e.g.,
+    passing incorrect arguments will raise a ValueError, etc.) However,
+    errors unrelated to the setup of the class or function will be
+    raised using non-standard exception types sub-classing this class.
+
+    """

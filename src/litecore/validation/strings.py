@@ -1,60 +1,93 @@
-import typing
+import abc
+import re
 
-import litecore.validate.base as base
-import litecore.validate.exceptions as exc
+from typing import (
+    Any,
+    Optional,
+    Union,
+)
+
+import litecore.validation.base as base
+import litecore.validation.length as length
+import litecore.validation.specified as specified
+import litecore.validation.exceptions as exc
 
 
-class String(base.Simple):
+class RegEx(base.Validator):
+    __slots__ = base.get_slots(base.Validator) + (
+        'pattern',
+        'flags',
+        '_compiled',
+    )
+
+    def __init__(
+        self,
+        *,
+        pattern: Optional[Union[str, bytes, re.Pattern]] = None,
+        flags: int = 0,
+        **kwargs,
+    ) -> None:
+        super().__init__(**kwargs)
+        self.pattern = pattern
+        self.flags = flags
+        if isinstance(pattern, re.Pattern):
+            self._compiled = pattern
+        else:
+            self._compiled = re.compile(pattern, flags)
+
+    def _validate(self, value: Any) -> Any:
+        if not re.match(self._compiled, value):
+            raise exc.PatternError(value, self)
+        return super()._validate(value)
+
+
+@base.abstractslots(('regex',))
+class HasRegEx(base.Validator):
+    __slots__ = ()
+
+    def __init__(
+        self,
+        *,
+        regex: Optional[RegEx] = None,
+        **kwargs,
+    ) -> None:
+        super().__init__(**kwargs)
+        self.regex = regex
+
+    @abc.abstractmethod
+    def _validate(self, value: Any) -> Any:
+        if self.regex is not None:
+            value = self.regex(value)
+        return super()._validate(value)
+
+
+class String(HasRegEx, length.HasLength, specified.SimpleChoices):
+    """
+
+    Examples:
+
+    """
+    __slots__ = ('encoding',) + base.combine_slots(
+        HasRegEx,
+        length.HasLength,
+        specified.SimpleChoices,
+    )
+    default_coerce_type = str
+
     def __init__(
             self,
             *,
-            length: typing.Optional[base.Length] = None,
-            pattern: typing.Optional[base.Pattern] = None,
-            one_of: typing.Optional[base.OneOf] = None,
-            encoding: str = 'utf-8',
+            encoding: Optional[str] = 'utf-8',
             **kwargs,
     ) -> None:
         super().__init__(**kwargs)
-        self.register_params((
-            'length',
-            'pattern',
-            'one_of',
-            'encoding',
-        ))
-        self.length = length
-        self.pattern = pattern
-        self.one_of = one_of
+        self.encoding = encoding
 
-    def _string_fallback(self, value: typing.Any) -> str:
-        if isinstance(value, bytes):
+    def _validate(self, value: Any) -> Any:
+        if isinstance(value, bytes) and self.encoding is not None:
             try:
-                return value.decode(self.encoding)
-            except (AttributeError, LookupError) as err:
-                raise exc.StringDecodingError(
-                    encoding=self.encoding,
-                    value=value,
-                ) from err
-        msg = f'expected str; got value {value!r}'
-        raise exc.InvalidTypeError(
-            msg,
-            expected=str,
-            actual=type(value),
-        )
-
-    def detailed_validation(self, value: typing.Any) -> typing.Any:
-        value = super().detailed_validation(value)
-        value = super().check_type(
-            value,
-            str,
-            fallback=self._string_fallback,
-        )
-        if self.one_of is not None:
-            value = self.one_of.validate(value)
-        if self.length is not None:
-            value = self.length.validate(value)
-        if self.pattern is not None:
-            value = self.pattern.validate(value)
-        return value
-
-
-base.register(str, String)
+                value = value.decode(self.encoding)
+            except UnicodeDecodeError as err:
+                args = (value, self, str, err)
+                raise exc.ValidationTypeError(*args) from err
+        return super()._validate(value)
